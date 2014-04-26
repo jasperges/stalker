@@ -2885,6 +2885,39 @@ class TaskDependency(Base, ScheduleMixin):
         return temp.render(template_variables)
 
 
+class Sprint(Entity, DateRangeMixin):
+    """Sprints are marathons done in a certain time intervals to complete a set
+    of tasks.
+
+    .. versionadded: 0.2.7
+
+    Sprints are an interval of time that contains :class:`.Task`\ s that wanted
+    or planned to be completed on that time interval.
+
+    Grouping tasks in sprints will give the advantage of tracking Tasks in a
+    much smaller scale and thus having more check points than having only the
+    :class:`.Project`\ s end date as a guidance.
+
+    You can add any number and kind of :class:`.Task`, :class:`Asset`,
+    :class:`.Shot` or :class:`.Sequence` to a Sprint.
+
+    The dependencies nor the start and end dates of the tasks are considered
+    important while adding Tasks to a certain Sprint. So a task which normally
+    ends after the Sprint's end date can be added to a sprint. But it will
+    effect the burn down calculation.
+
+    At any time the :attr:`.Sprint.burn_down` can be queried to see how many
+    tasks are left to be completed for that sprint.
+
+    When a Sprint has been created and a Task is added to that sprint a couple
+    of attributes of the Task has been recorded as the starting conditions of
+    that Task. Among those attributes are the :attr:`.Task.computed_start` and
+    :attr:`.Task.computed_end` dates. These values will be stored as a snapshot
+    of that task at the beginning of the sprint.
+    """
+    pass
+
+
 # TASK_RESOURCES
 Task_Resources = Table(
     "Task_Resources", Base.metadata,
