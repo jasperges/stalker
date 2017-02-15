@@ -948,7 +948,7 @@ class WorkingHoursMixin(object):
 
     @declared_attr
     def working_hours(cls):
-        return Column(PickleType)
+        return Column(PickleType(protocol=2))
 
     @validates('working_hours')
     def _validate_working_hours(self, key, wh):
