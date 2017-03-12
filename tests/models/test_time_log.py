@@ -16,21 +16,37 @@
 # You should have received a copy of the Lesser GNU General Public License
 # along with Stalker.  If not, see <http://www.gnu.org/licenses/>
 
-import unittest
+
+import copy
 import datetime
-from stalker import (Project, Repository, Status, StatusList, Task, TimeLog,
-                     User)
+import pytz
+
+from stalker import (db, Project, Repository, Status, StatusList, Task,
+                     TimeLog, User)
+from stalker.testing import UnitTestBase
 from stalker.exceptions import OverBookedError, StatusError, \
     DependencyViolationError
 
 
-class TimeLogTester(unittest.TestCase):
+class TimeLogTester(UnitTestBase):
     """tests the TimeLog class
     """
 
     def setUp(self):
         """setup the test
         """
+        super(TimeLogTester, self).setUp()
+
+        self.status_wfd = Status.query.filter_by(code='WFD').first()
+        self.status_rts = Status.query.filter_by(code='RTS').first()
+        self.status_wip = Status.query.filter_by(code='WIP').first()
+        self.status_prev = Status.query.filter_by(code='PREV').first()
+        self.status_hrev = Status.query.filter_by(code='HREV').first()
+        self.status_drev = Status.query.filter_by(code='DREV').first()
+        self.status_oh = Status.query.filter_by(code='OH').first()
+        self.status_stop = Status.query.filter_by(code='STOP').first()
+        self.status_cmpl = Status.query.filter_by(code='CMPL').first()
+
         # create a resource
         self.test_resource1 = User(
             name="User1",
@@ -38,6 +54,7 @@ class TimeLogTester(unittest.TestCase):
             email="user1@users.com",
             password="1234",
         )
+        db.DBSession.add(self.test_resource1)
 
         self.test_resource2 = User(
             name="User2",
@@ -45,19 +62,26 @@ class TimeLogTester(unittest.TestCase):
             email="user2@users.com",
             password="1234"
         )
+        db.DBSession.add(self.test_resource2)
 
         self.test_repo = Repository(name="test repository")
+        db.DBSession.add(self.test_repo)
 
         # create a Project
         self.test_status1 = Status(name="Status1", code="STS1")
         self.test_status2 = Status(name="Status2", code="STS2")
         self.test_status3 = Status(name="Status3", code="STS3")
+        db.DBSession.add_all([
+            self.test_status1, self.test_status2, self.test_status3
+        ])
 
         self.test_project_status_list = StatusList(
             name="Project Statuses",
             statuses=[self.test_status1],
             target_entity_type=Project
         )
+        db.DBSession.add(self.test_project_status_list)
+        db.DBSession.commit()
 
         self.test_task_status_list = StatusList.query\
             .filter_by(target_entity_type='Task').first()
@@ -68,24 +92,41 @@ class TimeLogTester(unittest.TestCase):
             repository=self.test_repo,
             status_list=self.test_project_status_list
         )
+        db.DBSession.add(self.test_project)
 
-        # create a Task
-        self.test_task = Task(
-            name="test task",
+        # create Tasks
+        self.test_task1 = Task(
+            name="test task 1",
             project=self.test_project,
-            status_list=self.test_task_status_list
+            status_list=self.test_task_status_list,
+            schedule_timing=10,
+            schedule_unit='d',
+            resources=[self.test_resource1]
         )
+        db.DBSession.add(self.test_task1)
+
+        self.test_task2 = Task(
+            name="test task 2",
+            project=self.test_project,
+            status_list=self.test_task_status_list,
+            schedule_timing=10,
+            schedule_unit='d',
+            resources=[self.test_resource1]
+        )
+        db.DBSession.add(self.test_task2)
 
         self.kwargs = {
-            "task": self.test_task,
+            "task": self.test_task1,
             "resource": self.test_resource1,
-            "start": datetime.datetime(2013, 3, 22, 1, 0),
+            "start": datetime.datetime(2013, 3, 22, 1, 0, tzinfo=pytz.utc),
             "duration": datetime.timedelta(10)
         }
 
         # create a TimeLog
         # and test it
         self.test_time_log = TimeLog(**self.kwargs)
+        db.DBSession.add(self.test_time_log)
+        db.DBSession.commit()
 
     def test___auto_name__class_attribute_is_set_to_True(self):
         """testing if the __auto_name__ class attribute is set to True for
@@ -98,42 +139,79 @@ class TimeLogTester(unittest.TestCase):
         skipped
         """
         td = datetime.timedelta
-        self.kwargs.pop("task")
-        self.kwargs['start'] = self.kwargs['start'] - td(days=100)
-        self.kwargs['duration'] = td(hours=10)
-        self.assertRaises(TypeError, TimeLog, **self.kwargs)
+        kwargs = copy.copy(self.kwargs)
+        kwargs.pop("task")
+        kwargs['start'] = kwargs['start'] - td(days=100)
+        kwargs['duration'] = td(hours=10)
+        with self.assertRaises(TypeError) as cm:
+            TimeLog(**kwargs)
+
+        self.assertEqual(
+            str(cm.exception),
+            'TimeLog.task should be an instance of stalker.models.task.Task '
+            'not NoneType'
+        )
 
     def test_task_argument_is_None(self):
         """testing if a TypeError will be raised when the task argument is None
         """
         td = datetime.timedelta
-        self.kwargs["task"] = None
-        self.kwargs['start'] = self.kwargs['start'] - td(days=100)
-        self.kwargs['duration'] = td(hours=10)
-        self.assertRaises(TypeError, TimeLog, **self.kwargs)
+        kwargs = copy.copy(self.kwargs)
+        kwargs["task"] = None
+        kwargs['start'] = kwargs['start'] - td(days=100)
+        kwargs['duration'] = td(hours=10)
+        with self.assertRaises(TypeError) as cm:
+            TimeLog(**kwargs)
+
+        self.assertEqual(
+            str(cm.exception),
+            'TimeLog.task should be an instance of stalker.models.task.Task '
+            'not NoneType'
+        )
 
     def test_task_attribute_is_None(self):
         """testing if a TypeError will be raised when the task attribute i
         None
         """
-        self.assertRaises(TypeError, setattr, self.test_time_log, "task", None)
+        with self.assertRaises(TypeError) as cm:
+            self.test_time_log.task = None
+
+        self.assertEqual(
+            str(cm.exception),
+            'TimeLog.task should be an instance of stalker.models.task.Task '
+            'not NoneType'
+        )
 
     def test_task_argument_is_not_a_Task_instance(self):
         """testing if a TypeError will be raised when the task argument is not
         a stalker.models.task.Task instance
         """
         td = datetime.timedelta
-        self.kwargs["task"] = "this is a task"
-        self.kwargs['start'] = self.kwargs['start'] - td(days=100)
-        self.kwargs['duration'] = td(hours=10)
-        self.assertRaises(TypeError, TimeLog, **self.kwargs)
+        kwargs = copy.copy(self.kwargs)
+        kwargs["task"] = "this is a task"
+        kwargs['start'] = kwargs['start'] - td(days=100)
+        kwargs['duration'] = td(hours=10)
+        with self.assertRaises(TypeError) as cm:
+            TimeLog(**kwargs)
+
+        self.assertEqual(
+            str(cm.exception),
+            'TimeLog.task should be an instance of stalker.models.task.Task '
+            'not str'
+        )
 
     def test_task_attribute_is_not_a_Task_instance(self):
         """testing if a TypeError will be raised when the task attribute is not
         a stalker.models.task.Task instance
         """
-        self.assertRaises(TypeError, setattr, self.test_time_log, "task",
-                          "this is a task")
+        with self.assertRaises(TypeError) as cm:
+            self.test_time_log.task = "this is a task"
+
+        self.assertEqual(
+            str(cm.exception),
+            'TimeLog.task should be an instance of stalker.models.task.Task '
+            'not str'
+        )
 
     def test_task_attribute_is_working_properly(self):
         """testing if the task attribute is working properly
@@ -161,11 +239,11 @@ class TimeLogTester(unittest.TestCase):
         )
 
         # now create a new time_log for the new task
-        self.kwargs["task"] = new_task
-        self.kwargs["start"] = self.kwargs["start"] + \
-                               self.kwargs["duration"] + \
-                               datetime.timedelta(120)
-        new_time_log = TimeLog(**self.kwargs)
+        kwargs = copy.copy(self.kwargs)
+        kwargs["task"] = new_task
+        kwargs["start"] = kwargs["start"] + kwargs["duration"] + \
+                          datetime.timedelta(120)
+        new_time_log = TimeLog(**kwargs)
 
         # now check if the new_time_log is in task.time_logs
         self.assertTrue(new_time_log in new_task.time_logs)
@@ -189,36 +267,71 @@ class TimeLogTester(unittest.TestCase):
         """testing if a TypeError will be raised when the resource argument is
         skipped
         """
-        self.kwargs.pop("resource")
-        self.assertRaises(TypeError, TimeLog, **self.kwargs)
+        kwargs = copy.copy(self.kwargs)
+        kwargs.pop("resource")
+        kwargs['start'] -= datetime.timedelta(days=200)
+        kwargs['end'] = kwargs['start'] + datetime.timedelta(days=10)
+        with self.assertRaises(TypeError) as cm:
+            TimeLog(**kwargs)
+
+        self.assertEqual(
+            str(cm.exception),
+            'TimeLog.resource can not be None'
+        )
 
     def test_resource_argument_is_None(self):
         """testing if a TypeError will be raised when the resource argument is
         None
         """
-        self.kwargs["resource"] = None
-        self.assertRaises(TypeError, TimeLog, **self.kwargs)
+        kwargs = copy.copy(self.kwargs)
+        kwargs["resource"] = None
+        with self.assertRaises(TypeError) as cm:
+            TimeLog(**kwargs)
+
+        self.assertEqual(
+            str(cm.exception),
+            'TimeLog.resource can not be None'
+        )
 
     def test_resource_attribute_is_None(self):
         """testing if a TypeError will be raised when the resource attribute is
         set to None
         """
-        self.assertRaises(TypeError, setattr, self.test_time_log, "resource",
-                          None)
+        with self.assertRaises(TypeError) as cm:
+            self.test_time_log.resource = None
+
+        self.assertEqual(
+            str(cm.exception),
+            'TimeLog.resource can not be None'
+        )
 
     def test_resource_argument_is_not_a_User_instance(self):
         """testing if a TypeError will be raised when the resource argument is
         not a stalker.models.user.User instance
         """
-        self.kwargs["resource"] = "This is a resource"
-        self.assertRaises(TypeError, TimeLog, **self.kwargs)
+        kwargs = copy.copy(self.kwargs)
+        kwargs["resource"] = "This is a resource"
+        with self.assertRaises(TypeError) as cm:
+            TimeLog(**kwargs)
+
+        self.assertEqual(
+            str(cm.exception),
+            'TimeLog.resource should be a stalker.models.auth.User instance '
+            'not str'
+        )
 
     def test_resource_attribute_is_not_a_User_instance(self):
         """testing if a TypeError will be raised when the resource attribute is
         set to a value other than a stalker.models.user.User instance
         """
-        self.assertRaises(TypeError, setattr, self.test_time_log, "resource",
-                          "this is a resource")
+        with self.assertRaises(TypeError) as cm:
+            self.test_time_log.resource = "this is a resource"
+
+        self.assertEqual(
+            str(cm.exception),
+            'TimeLog.resource should be a stalker.models.auth.User instance '
+            'not str'
+        )
 
     def test_resource_attribute_is_working_properly(self):
         """testing if the resource attribute is working properly
@@ -246,8 +359,9 @@ class TimeLogTester(unittest.TestCase):
             password="1234",
         )
 
-        self.kwargs["resource"] = new_resource
-        new_time_log = TimeLog(**self.kwargs)
+        kwargs = copy.copy(self.kwargs)
+        kwargs["resource"] = new_resource
+        new_time_log = TimeLog(**kwargs)
 
         self.assertEqual(new_time_log.resource, new_resource)
 
@@ -271,13 +385,16 @@ class TimeLogTester(unittest.TestCase):
         """testing if the DateRangeMixin part is initialized correctly
         """
         # it should have schedule attributes
-        self.assertEqual(self.test_time_log.start,
-                         self.kwargs["start"])
+        self.assertEqual(
+            self.test_time_log.start,
+            self.kwargs["start"]
+        )
         self.assertEqual(self.test_time_log.duration, self.kwargs["duration"])
 
-        self.test_time_log.start = datetime.datetime(2013, 3, 22, 4, 0)
-        self.test_time_log.end = self.test_time_log.start + \
-                                 datetime.timedelta(10)
+        self.test_time_log.start = \
+            datetime.datetime(2013, 3, 22, 4, 0, tzinfo=pytz.utc)
+        self.test_time_log.end = \
+            self.test_time_log.start + datetime.timedelta(10)
         self.assertEqual(self.test_time_log.duration, datetime.timedelta(10))
 
     def test_OverbookedError_1(self):
@@ -289,12 +406,25 @@ class TimeLogTester(unittest.TestCase):
         #####
         """
         # time_log1
-        self.kwargs["resource"] = self.test_resource2
-        self.kwargs["start"] = datetime.datetime(2013, 3, 22, 4, 0),
-        self.kwargs["duration"] = datetime.timedelta(10)
-        time_log1 = TimeLog(**self.kwargs)
+        import copy
+        kwargs = copy.copy(self.kwargs)
+        kwargs["resource"] = self.test_resource2
+        kwargs["start"] = \
+            datetime.datetime(2013, 3, 22, 4, 0, tzinfo=pytz.utc),
+        kwargs["duration"] = datetime.timedelta(10)
+        time_log1 = TimeLog(**kwargs)
+        db.DBSession.add(time_log1)
+        db.DBSession.commit()
 
-        self.assertRaises(OverBookedError, TimeLog, **self.kwargs)
+        with self.assertRaises(OverBookedError) as cm:
+            TimeLog(**kwargs)
+
+        self.assertEqual(
+            str(cm.exception),
+            'The resource has another TimeLog between %s and %s' % (
+                time_log1.start, time_log1.end
+            )
+        )
 
     def test_OverbookedError_2(self):
         """testing if a OverBookedError will be raised when the resource is
@@ -305,14 +435,25 @@ class TimeLogTester(unittest.TestCase):
         #####
         """
         # time_log1
-        self.kwargs["resource"] = self.test_resource2
-        self.kwargs["start"] = datetime.datetime(2013, 3, 22, 4, 0),
-        self.kwargs["duration"] = datetime.timedelta(10)
-        time_log1 = TimeLog(**self.kwargs)
+        kwargs = copy.copy(self.kwargs)
+        kwargs["resource"] = self.test_resource2
+        kwargs["start"] = datetime.datetime(2013, 3, 22, 4, 0, tzinfo=pytz.utc)
+        kwargs["duration"] = datetime.timedelta(10)
+        time_log1 = TimeLog(**kwargs)
+        db.DBSession.add(time_log1)
+        db.DBSession.commit()
 
         # time_log2
-        self.kwargs["duration"] = datetime.timedelta(8)
-        self.assertRaises(OverBookedError, TimeLog, **self.kwargs)
+        kwargs["duration"] = datetime.timedelta(8)
+        with self.assertRaises(OverBookedError) as cm:
+            TimeLog(**kwargs)
+
+        self.assertEqual(
+            str(cm.exception),
+            'The resource has another TimeLog between %s and %s' % (
+                time_log1.start, time_log1.end
+            )
+        )
 
     def test_OverbookedError_3(self):
         """testing if a OverBookedError will be raised when the resource is
@@ -323,15 +464,24 @@ class TimeLogTester(unittest.TestCase):
         #######
         """
         # time_log1
-        self.kwargs["resource"] = self.test_resource2
-        self.kwargs["start"] = datetime.datetime(2013, 3, 22, 4, 0),
-        self.kwargs["duration"] = datetime.timedelta(8)
-        time_log1 = TimeLog(**self.kwargs)
+        kwargs = copy.copy(self.kwargs)
+        kwargs["resource"] = self.test_resource2
+        kwargs["start"] = datetime.datetime(2013, 3, 22, 4, 0, tzinfo=pytz.utc)
+        kwargs["duration"] = datetime.timedelta(8)
+        time_log1 = TimeLog(**kwargs)
+        db.DBSession.add(time_log1)
+        db.DBSession.commit()
 
         # time_log2
-        self.kwargs["duration"] = datetime.timedelta(10)
+        kwargs["duration"] = datetime.timedelta(10)
+        with self.assertRaises(OverBookedError) as cm:
+            TimeLog(**kwargs)
 
-        self.assertRaises(OverBookedError, TimeLog, **self.kwargs)
+        self.assertEqual(
+            str(cm.exception),
+            'The resource has another TimeLog between 2013-03-22 '
+            '06:00:00+02:00 and 2013-03-30 06:00:00+02:00'
+        )
 
     def test_OverbookedError_4(self):
         """testing if a OverBookedError will be raised when the resource is
@@ -342,18 +492,28 @@ class TimeLogTester(unittest.TestCase):
           #####
         """
         # time_log1
-        self.kwargs["resource"] = self.test_resource2
-        self.kwargs["start"] = datetime.datetime(2013, 3, 22, 4, 0) - \
-                               datetime.timedelta(2)
-        self.kwargs["duration"] = datetime.timedelta(12)
-
-        time_log1 = TimeLog(**self.kwargs)
+        kwargs = copy.copy(self.kwargs)
+        kwargs["resource"] = self.test_resource2
+        kwargs["start"] = \
+            datetime.datetime(2013, 3, 22, 4, 0, tzinfo=pytz.utc) \
+            - datetime.timedelta(2)
+        kwargs["duration"] = datetime.timedelta(12)
+        time_log1 = TimeLog(**kwargs)
+        db.DBSession.add(time_log1)
+        db.DBSession.commit()
 
         # time_log2
-        self.kwargs["start"] = datetime.datetime(2013, 3, 22, 4, 0)
-        self.kwargs["duration"] = datetime.timedelta(10)
+        kwargs["start"] = datetime.datetime(2013, 3, 22, 4, 0, tzinfo=pytz.utc)
+        kwargs["duration"] = datetime.timedelta(10)
 
-        self.assertRaises(OverBookedError, TimeLog, **self.kwargs)
+        with self.assertRaises(OverBookedError) as cm:
+            TimeLog(**kwargs)
+
+        self.assertEqual(
+            str(cm.exception),
+            'The resource has another TimeLog between 2013-03-20 '
+            '06:00:00+02:00 and 2013-04-01 07:00:00+03:00'
+        )
 
     def test_OverbookedError_5(self):
         """testing if a OverBookedError will be raised when the resource is
@@ -364,18 +524,30 @@ class TimeLogTester(unittest.TestCase):
         #######
         """
         # time_log1
-        self.kwargs["resource"] = self.test_resource2
-        self.kwargs["start"] = datetime.datetime(2013, 3, 22, 4, 0)
-        self.kwargs["duration"] = datetime.timedelta(10)
+        kwargs = copy.copy(self.kwargs)
+        kwargs["resource"] = self.test_resource2
+        kwargs["start"] = \
+            datetime.datetime(2013, 3, 22, 4, 0, tzinfo=pytz.utc)
+        kwargs["duration"] = datetime.timedelta(10)
 
-        time_log1 = TimeLog(**self.kwargs)
+        time_log1 = TimeLog(**kwargs)
+        db.DBSession.add(time_log1)
+        db.DBSession.commit()
 
         # time_log2
-        self.kwargs["start"] = datetime.datetime(2013, 3, 22, 4, 0) - \
-                               datetime.timedelta(2)
-        self.kwargs["duration"] = datetime.timedelta(12)
+        kwargs["start"] = \
+            datetime.datetime(2013, 3, 22, 4, 0, tzinfo=pytz.utc) \
+            - datetime.timedelta(2)
+        kwargs["duration"] = datetime.timedelta(12)
 
-        self.assertRaises(OverBookedError, TimeLog, **self.kwargs)
+        with self.assertRaises(OverBookedError) as cm:
+            TimeLog(**kwargs)
+
+        self.assertEqual(
+            str(cm.exception),
+            'The resource has another TimeLog between 2013-03-22 '
+            '06:00:00+02:00 and 2013-04-01 07:00:00+03:00'
+        )
 
     def test_OverbookedError_6(self):
         """testing if a OverBookedError will be raised when the resource is
@@ -386,18 +558,30 @@ class TimeLogTester(unittest.TestCase):
         #######
         """
         # time_log1
-        self.kwargs["resource"] = self.test_resource2
-        self.kwargs["start"] = datetime.datetime(2013, 3, 22, 4, 0)
-        self.kwargs["duration"] = datetime.timedelta(15)
+        kwargs = copy.copy(self.kwargs)
+        kwargs["resource"] = self.test_resource2
+        kwargs["start"] = \
+            datetime.datetime(2013, 3, 22, 4, 0, tzinfo=pytz.utc)
+        kwargs["duration"] = datetime.timedelta(15)
 
-        time_log1 = TimeLog(**self.kwargs)
+        time_log1 = TimeLog(**kwargs)
+        db.DBSession.add(time_log1)
+        db.DBSession.commit()
 
         # time_log2
-        self.kwargs["start"] = datetime.datetime(2013, 3, 22, 4, 0) - \
-                               datetime.timedelta(5)
-        self.kwargs["duration"] = datetime.timedelta(15)
+        kwargs["start"] = \
+            datetime.datetime(2013, 3, 22, 4, 0, tzinfo=pytz.utc) \
+            - datetime.timedelta(5)
+        kwargs["duration"] = datetime.timedelta(15)
 
-        self.assertRaises(OverBookedError, TimeLog, **self.kwargs)
+        with self.assertRaises(OverBookedError) as cm:
+            TimeLog(**kwargs)
+
+        self.assertEqual(
+            str(cm.exception),
+            'The resource has another TimeLog between 2013-03-22 '
+            '06:00:00+02:00 and 2013-04-06 07:00:00+03:00'
+        )
 
     def test_OverbookedError_7(self):
         """testing if a OverBookedError will be raised when the resource is
@@ -408,18 +592,30 @@ class TimeLogTester(unittest.TestCase):
           #######
         """
         # time_log1
-        self.kwargs["resource"] = self.test_resource2
-        self.kwargs["start"] = \
-            datetime.datetime(2013, 3, 22, 4, 0) - datetime.timedelta(5)
-        self.kwargs["duration"] = datetime.timedelta(15)
+        kwargs = copy.copy(self.kwargs)
+        kwargs["resource"] = self.test_resource2
+        kwargs["start"] = \
+            datetime.datetime(2013, 3, 22, 4, 0, tzinfo=pytz.utc) \
+            - datetime.timedelta(5)
+        kwargs["duration"] = datetime.timedelta(15)
 
-        time_log1 = TimeLog(**self.kwargs)
+        time_log1 = TimeLog(**kwargs)
+        db.DBSession.add(time_log1)
+        db.DBSession.commit()
 
         # time_log2
-        self.kwargs["start"] = datetime.datetime(2013, 3, 22, 4, 0)
-        self.kwargs["duration"] = datetime.timedelta(15)
+        kwargs["start"] = \
+            datetime.datetime(2013, 3, 22, 4, 0, tzinfo=pytz.utc)
+        kwargs["duration"] = datetime.timedelta(15)
 
-        self.assertRaises(OverBookedError, TimeLog, **self.kwargs)
+        with self.assertRaises(OverBookedError) as cm:
+            TimeLog(**kwargs)
+
+        self.assertEqual(
+            str(cm.exception),
+            'The resource has another TimeLog between 2013-03-17 '
+            '06:00:00+02:00 and 2013-04-01 07:00:00+03:00'
+        )
 
     def test_OverbookedError_8(self):
         """testing if no OverBookedError will be raised when the resource is
@@ -430,16 +626,23 @@ class TimeLogTester(unittest.TestCase):
                  #######
         """
         # time_log1
-        self.kwargs["resource"] = self.test_resource2
-        self.kwargs["start"] = datetime.datetime(2013, 3, 22, 4, 0)
-        self.kwargs["duration"] = datetime.timedelta(5)
-        time_log1 = TimeLog(**self.kwargs)
+        kwargs = copy.copy(self.kwargs)
+        kwargs["resource"] = self.test_resource2
+        kwargs["start"] = \
+            datetime.datetime(2013, 3, 22, 4, 0, tzinfo=pytz.utc)
+        kwargs["duration"] = datetime.timedelta(5)
+        time_log1 = TimeLog(**kwargs)
+        db.DBSession.add(time_log1)
+        db.DBSession.commit()
 
         # time_log2
-        self.kwargs["start"] = datetime.datetime(2013, 3, 22, 4, 0) + \
-                               datetime.timedelta(20)
+        kwargs["start"] = \
+            datetime.datetime(2013, 3, 22, 4, 0, tzinfo=pytz.utc) \
+            + datetime.timedelta(20)
         # no warning
-        time_log2 = TimeLog(**self.kwargs)
+        time_log2 = TimeLog(**kwargs)
+        db.DBSession.add(time_log2)
+        db.DBSession.commit()
 
     def test_OverbookedError_9(self):
         """testing if no OverBookedError will be raised when the resource is
@@ -450,124 +653,136 @@ class TimeLogTester(unittest.TestCase):
         #######
         """
         # time_log1
-        self.kwargs["resource"] = self.test_resource2
-        self.kwargs["start"] =\
-            datetime.datetime(2013, 3, 22, 4, 0) + datetime.timedelta(20)
-        self.kwargs["duration"] = datetime.timedelta(5)
-        time_log1 = TimeLog(**self.kwargs)
+        kwargs = copy.copy(self.kwargs)
+        kwargs["resource"] = self.test_resource2
+        kwargs["start"] =\
+            datetime.datetime(2013, 3, 22, 4, 0, tzinfo=pytz.utc) \
+            + datetime.timedelta(20)
+        kwargs["duration"] = datetime.timedelta(5)
+        time_log1 = TimeLog(**kwargs)
+        db.DBSession.add(time_log1)
+        db.DBSession.commit()
 
         # time_log2
-        self.kwargs["start"] = datetime.datetime(2013, 3, 22, 4, 0)
+        kwargs["start"] = \
+            datetime.datetime(2013, 3, 22, 4, 0, tzinfo=pytz.utc)
 
         # no warning
-        time_log2 = TimeLog(**self.kwargs)
+        time_log2 = TimeLog(**kwargs)
+        db.DBSession.add(time_log2)
+        db.DBSession.commit()
 
     def test_OverbookedError_10(self):
-        """testing i no OverBookedError will be raised for the same TimeLog
+        """testing if no OverBookedError will be raised for the same TimeLog
         instance
         """
         # time_log1
-        self.kwargs['resource'] = self.test_resource2
-        self.kwargs['start'] = datetime.datetime(2013, 5, 6, 14, 0)
-        self.kwargs['duration'] = datetime.timedelta(20)
-        time_log1 = TimeLog(**self.kwargs)
+        kwargs = copy.copy(self.kwargs)
+        kwargs['resource'] = self.test_resource2
+        kwargs['start'] = \
+            datetime.datetime(2013, 5, 6, 14, 0, tzinfo=pytz.utc)
+        kwargs['duration'] = datetime.timedelta(20)
+        time_log1 = TimeLog(**kwargs)
 
         # no warning
         self.test_resource2.time_logs.append(time_log1)
 
+    def test_OverbookedError_11(self):
+        """testing if a IntegrityError will be raised by the database backend
+        when the resource is already booked for the given time period and it is
+        not caught in Python side.
 
-class TimeLogDBTestCase(unittest.TestCase):
-    """Tests database interaction of TimeLog instances
-    """
-
-    def setUp(self):
-        """set up the test
+        Simple case diagram:
+        #######
+          #######
         """
-        # create an in memory database
-        from stalker import db
+        # time_log1
+        kwargs = copy.copy(self.kwargs)
+        kwargs["resource"] = self.test_resource2
+        kwargs["start"] = \
+            datetime.datetime(2013, 3, 22, 4, 0, tzinfo=pytz.utc) \
+            - datetime.timedelta(5)
+        kwargs["duration"] = datetime.timedelta(15)
 
-        db.setup()
-        db.init()
+        time_log1 = TimeLog(**kwargs)
+        db.DBSession.add(time_log1)
 
-        self.status_wfd = Status.query.filter_by(code='WFD').first()
-        self.status_rts = Status.query.filter_by(code='RTS').first()
-        self.status_wip = Status.query.filter_by(code='WIP').first()
-        self.status_prev = Status.query.filter_by(code='PREV').first()
-        self.status_hrev = Status.query.filter_by(code='HREV').first()
-        self.status_drev = Status.query.filter_by(code='DREV').first()
-        self.status_oh = Status.query.filter_by(code='OH').first()
-        self.status_stop = Status.query.filter_by(code='STOP').first()
-        self.status_cmpl = Status.query.filter_by(code='CMPL').first()
+        # time_log2
+        kwargs["start"] = \
+            datetime.datetime(2013, 3, 22, 4, 0, tzinfo=pytz.utc)
+        kwargs["duration"] = datetime.timedelta(15)
 
-        # create a resource
-        self.test_resource1 = User(
-            name="User1",
-            login="user1",
-            email="user1@users.com",
-            password="1234",
+        time_log2 = TimeLog(**kwargs)
+        db.DBSession.add(time_log2)
+
+        # there should be an DatabaseError raised
+        from sqlalchemy.exc import IntegrityError
+        with self.assertRaises(IntegrityError) as cm:
+            db.DBSession.commit()
+
+        self.assertTrue(
+            str(cm.exception).startswith(
+                '(psycopg2.IntegrityError) conflicting key value violates '
+                'exclusion constraint "overlapping_time_logs"'
+            )
         )
 
-        self.test_resource2 = User(
-            name="User2",
-            login="user2",
-            email="user2@users.com",
-            password="1234"
+    def test_OverbookedError_12(self):
+        """testing if a IntegrityError will be raised by the database backend
+        when the resource is already booked for the given time period and it is
+        not caught in Python side. But this one ensures that the error is
+        raised even if the tasks are different.
+
+        Simple case diagram:
+        #######
+          #######
+        """
+        # time_log1
+        kwargs = copy.copy(self.kwargs)
+        kwargs["resource"] = self.test_resource2
+        kwargs["start"] = \
+            datetime.datetime(2013, 3, 22, 4, 0, tzinfo=pytz.utc) \
+            - datetime.timedelta(5)
+        kwargs["duration"] = datetime.timedelta(15)
+        kwargs['task'] = self.test_task1
+
+        time_log1 = TimeLog(**kwargs)
+        db.DBSession.add(time_log1)
+
+        # time_log2
+        kwargs["start"] = \
+            datetime.datetime(2013, 3, 22, 4, 0, tzinfo=pytz.utc)
+        kwargs["duration"] = datetime.timedelta(15)
+        kwargs['task'] = self.test_task2
+
+        time_log2 = TimeLog(**kwargs)
+        db.DBSession.add(time_log2)
+
+        # there should be an DatabaseError raised
+        from sqlalchemy.exc import IntegrityError
+        with self.assertRaises(IntegrityError) as cm:
+            db.DBSession.commit()
+
+        self.assertTrue(
+            str(cm.exception).startswith(
+                '(psycopg2.IntegrityError) conflicting key value violates '
+                'exclusion constraint "overlapping_time_logs"'
+            )
         )
-
-        self.test_repo = Repository(name="test repository")
-
-        # create a Project
-        self.test_status1 = Status(name="Status1", code="STS1")
-        self.test_status2 = Status(name="Status2", code="STS2")
-        self.test_status3 = Status(name="Status3", code="STS3")
-
-        self.test_project_status_list = StatusList(
-            name="Project Statuses",
-            statuses=[self.test_status1],
-            target_entity_type=Project
-        )
-
-        self.test_task_status_list = StatusList.query\
-            .filter_by(target_entity_type='Task').first()
-
-        self.test_project = Project(
-            name="test project",
-            code='tp',
-            repository=self.test_repo,
-            status_list=self.test_project_status_list
-        )
-
-        # create a Task
-        self.test_task = Task(
-            name="test task",
-            project=self.test_project,
-            status_list=self.test_task_status_list,
-            schedule_timing=10,
-            schedule_unit='d',
-            resources=[self.test_resource1]
-        )
-
-        self.kwargs = {
-            "name": "test time_log",
-            "task": self.test_task,
-            "resource": self.test_resource1,
-            "start": datetime.datetime(2013, 3, 22, 1, 0),
-            "duration": datetime.timedelta(10)
-        }
 
     def test_timeLog_prevents_auto_flush_when_expanding_task_schedule_timing(self):
         """testing timeLog prevents auto flush when expanding task
         schedule_timing attribute
         """
-        from stalker.db.session import DBSession
-
-        tlog1 = TimeLog(**self.kwargs)
-        DBSession.add(tlog1)
-        DBSession.commit()
+        kwargs = copy.copy(self.kwargs)
+        kwargs['start'] = kwargs['start'] - datetime.timedelta(days=100)
+        tlog1 = TimeLog(**kwargs)
+        db.DBSession.add(tlog1)
+        db.DBSession.commit()
 
         # create a new time log
-        self.kwargs['start'] = self.kwargs['start'] + self.kwargs['duration']
-        tlog2 = TimeLog(**self.kwargs)
+        kwargs['start'] = kwargs['start'] + kwargs['duration']
+        tlog2 = TimeLog(**kwargs)
 
     def test_timeLog_creation_for_a_child_task(self):
         """testing TimeLog creation for a child task which has a couple of
@@ -627,8 +842,8 @@ class TimeLogDBTestCase(unittest.TestCase):
         tlog1 = TimeLog(
             task=child_task2,
             resource=child_task2.resources[0],
-            start=dt(2013, 7, 31, 10, 0),
-            end=dt(2013, 7, 31, 19, 0)
+            start=dt(2013, 7, 31, 10, 0, tzinfo=pytz.utc),
+            end=dt(2013, 7, 31, 19, 0, tzinfo=pytz.utc)
         )
 
         # before commit
@@ -652,8 +867,8 @@ class TimeLogDBTestCase(unittest.TestCase):
         tlog2 = TimeLog(
             task=child_task2,
             resource=child_task2.resources[0],
-            start=dt(2013, 7, 31, 19, 0),
-            end=dt(2013, 7, 31, 22, 0)
+            start=dt(2013, 7, 31, 19, 0, tzinfo=pytz.utc),
+            end=dt(2013, 7, 31, 22, 0, tzinfo=pytz.utc)
         )
 
         self.assertEqual(parent_task1.total_logged_seconds, 12 * 3600)
@@ -674,8 +889,8 @@ class TimeLogDBTestCase(unittest.TestCase):
         tlog3 = TimeLog(
             task=child_task1,
             resource=child_task1.resources[0],
-            start=dt(2013, 7, 31, 10, 0),
-            end=dt(2013, 7, 31, 19, 0)
+            start=dt(2013, 7, 31, 10, 0, tzinfo=pytz.utc),
+            end=dt(2013, 7, 31, 19, 0, tzinfo=pytz.utc)
         )
 
         self.assertEqual(parent_task1.total_logged_seconds, 21 * 3600)
@@ -700,83 +915,129 @@ class TimeLogDBTestCase(unittest.TestCase):
             name='Test Task 2',
             project=self.test_project
         )
-        new_task.depends = [self.test_task]
-        self.kwargs['task'] = new_task
-        self.assertRaises(StatusError, TimeLog, **self.kwargs)
+        new_task.depends = [self.test_task1]
+        kwargs = copy.copy(self.kwargs)
+        kwargs['task'] = new_task
+        with self.assertRaises(StatusError) as cm:
+            TimeLog(**kwargs)
+
+        self.assertEqual(
+            str(cm.exception),
+            'Test Task 2 is a WFD task, and it is not allowed to create '
+            'TimeLogs for a WFD task, please supply a RTS, WIP, HREV or DREV '
+            'task!'
+        )
 
     def test_time_log_creation_for_a_RTS_leaf_task(self):
         """testing if the status will be updated to WIP when a TimeLog instance
         is created for a RTS leaf task
         """
-        task = self.kwargs['task']
+        kwargs = copy.copy(self.kwargs)
+        task = kwargs['task']
+        kwargs['start'] -= datetime.timedelta(days=100)
         task.status = self.status_rts
         self.assertEqual(task.status, self.status_rts)
-        TimeLog(**self.kwargs)
+        TimeLog(**kwargs)
         self.assertEqual(task.status, self.status_wip)
 
     def test_time_log_creation_for_a_WIP_leaf_task(self):
         """testing if the status will stay at WIP when a TimeLog instance is
         created for a WIP leaf task
         """
-        task = self.kwargs['task']
+        kwargs = copy.copy(self.kwargs)
+        task = kwargs['task']
+        kwargs['start'] -= datetime.timedelta(days=10)
         task.status = self.status_wip
         self.assertEqual(task.status, self.status_wip)
-        TimeLog(**self.kwargs)
+        TimeLog(**kwargs)
 
     def test_time_log_creation_for_a_PREV_leaf_task(self):
         """testing if the status will stay at PREV when a TimeLog instance is
         created for a PREV leaf task
         """
-        task = self.kwargs['task']
+        kwargs = copy.copy(self.kwargs)
+        task = kwargs['task']
+        kwargs['start'] -= datetime.timedelta(days=100)
         task.status = self.status_prev
         self.assertEqual(task.status, self.status_prev)
-        tlog = TimeLog(**self.kwargs)
+        tlog = TimeLog(**kwargs)
         self.assertEqual(task.status, self.status_prev)
 
     def test_time_log_creation_for_a_HREV_leaf_task(self):
         """testing if the status will be updated to WIP when a TimeLog instance
         is created for a HREV leaf task
         """
-        task = self.kwargs['task']
+        kwargs = copy.copy(self.kwargs)
+        task = kwargs['task']
+        kwargs['start'] -= datetime.timedelta(days=100)
         task.status = self.status_hrev
         self.assertEqual(task.status, self.status_hrev)
-        TimeLog(**self.kwargs)
+        TimeLog(**kwargs)
 
     def test_time_log_creation_for_a_DREV_leaf_task(self):
         """testing if the status will stay at DREV when a TimeLog instance is
         created for a DREV leaf task
         """
-        task = self.kwargs['task']
+        kwargs = copy.copy(self.kwargs)
+        task = kwargs['task']
+        kwargs['start'] -= datetime.timedelta(days=100)
         task.status = self.status_drev
         self.assertEqual(task.status, self.status_drev)
-        TimeLog(**self.kwargs)
+        TimeLog(**kwargs)
 
     def test_time_log_creation_for_a_OH_leaf_task(self):
         """testing if a StatusError will be raised when a TimeLog instance is
         created for a OH leaf task
         """
-        task = self.kwargs['task']
+        kwargs = copy.copy(self.kwargs)
+        task = kwargs['task']
         task.status = self.status_oh
         self.assertEqual(task.status, self.status_oh)
-        self.assertRaises(StatusError, TimeLog, **self.kwargs)
+        with self.assertRaises(StatusError) as cm:
+            TimeLog(**kwargs)
+
+        self.assertEqual(
+            str(cm.exception),
+            'test task 1 is a OH task, and it is not allowed to create '
+            'TimeLogs for a OH task, please supply a RTS, WIP, HREV or DREV '
+            'task!'
+        )
 
     def test_time_log_creation_for_a_STOP_leaf_task(self):
         """testing if a StatusError will be raised when a TimeLog instance is
         created for a STOP leaf task
         """
-        task = self.kwargs['task']
+        kwargs = copy.copy(self.kwargs)
+        task = kwargs['task']
         task.status = self.status_stop
         self.assertEqual(task.status, self.status_stop)
-        self.assertRaises(StatusError, TimeLog, **self.kwargs)
+        with self.assertRaises(StatusError) as cm:
+            TimeLog(**kwargs)
+
+        self.assertEqual(
+            str(cm.exception),
+            'test task 1 is a STOP task, and it is not allowed to create '
+            'TimeLogs for a STOP task, please supply a RTS, WIP, HREV or DREV '
+            'task!'
+        )
 
     def test_time_log_creation_for_a_CMPL_leaf_task(self):
         """testing if a StatusError will be raised when a TimeLog instance is
         created for a CMPL leaf task
         """
-        task = self.kwargs['task']
+        kwargs = copy.copy(self.kwargs)
+        task = kwargs['task']
         task.status = self.status_cmpl
         self.assertEqual(task.status, self.status_cmpl)
-        self.assertRaises(StatusError, TimeLog, **self.kwargs)
+        with self.assertRaises(StatusError) as cm:
+            TimeLog(**kwargs)
+
+        self.assertEqual(
+            str(cm.exception),
+            'test task 1 is a CMPL task, and it is not allowed to create '
+            'TimeLogs for a CMPL task, please supply a RTS, WIP, HREV or DREV '
+            'task!'
+        )
 
     def test_time_log_creation_that_violates_dependency_condition_WIP_CMPL_onend(self):
         """testing if a DependencyViolationError will be raised when the entered
@@ -790,10 +1051,11 @@ class TimeLogDBTestCase(unittest.TestCase):
                                 |  WIP   |
                                 +--------+
         """
-        task = self.kwargs['task']
+        kwargs = copy.copy(self.kwargs)
+        task = kwargs['task']
         task.status = self.status_cmpl
-        task.start = datetime.datetime(2014, 3, 16, 10, 0)
-        task.end = datetime.datetime(2014, 3, 25, 19, 0)
+        task.start = datetime.datetime(2014, 3, 16, 10, 0, tzinfo=pytz.utc)
+        task.end = datetime.datetime(2014, 3, 25, 19, 0, tzinfo=pytz.utc)
 
         dep_task = Task(
             name="test task 2",
@@ -813,14 +1075,14 @@ class TimeLogDBTestCase(unittest.TestCase):
         with self.assertRaises(DependencyViolationError) as cm:
             dep_task.create_time_log(
                 self.test_resource2,
-                datetime.datetime(2014, 3, 25, 18, 0),
-                datetime.datetime(2014, 3, 25, 19, 0)
+                datetime.datetime(2014, 3, 25, 18, 0, tzinfo=pytz.utc),
+                datetime.datetime(2014, 3, 25, 19, 0, tzinfo=pytz.utc)
             )
 
         self.assertEqual(
-            '\'It is not possible to create a TimeLog before %s, which '
+            'u\'It is not possible to create a TimeLog before %s, which '
             'violates the dependency relation of "%s" to "%s"\'' % (
-                datetime.datetime(2014, 3, 25, 19, 0),
+                datetime.datetime(2014, 3, 25, 19, 0, tzinfo=pytz.utc),
                 dep_task.name,
                 task.name
             ),
@@ -830,8 +1092,8 @@ class TimeLogDBTestCase(unittest.TestCase):
         # and creating a TimeLog after that is possible
         dep_task.create_time_log(
             self.test_resource2,
-            datetime.datetime(2014, 3, 25, 19, 0),
-            datetime.datetime(2014, 3, 25, 20, 0)
+            datetime.datetime(2014, 3, 25, 19, 0, tzinfo=pytz.utc),
+            datetime.datetime(2014, 3, 25, 20, 0, tzinfo=pytz.utc)
         )
 
     def test_time_log_creation_that_violates_dependency_condition_WIP_CMPL_onstart(self):
@@ -846,10 +1108,11 @@ class TimeLogDBTestCase(unittest.TestCase):
                                 |  WIP   |
                                 +--------+
         """
-        task = self.kwargs['task']
+        kwargs = copy.copy(self.kwargs)
+        task = kwargs['task']
         task.status = self.status_cmpl
-        task.start = datetime.datetime(2014, 3, 16, 10, 0)
-        task.end = datetime.datetime(2014, 3, 25, 19, 0)
+        task.start = datetime.datetime(2014, 3, 16, 10, 0, tzinfo=pytz.utc)
+        task.end = datetime.datetime(2014, 3, 25, 19, 0, tzinfo=pytz.utc)
 
         dep_task = Task(
             name="test task 2",
@@ -869,14 +1132,14 @@ class TimeLogDBTestCase(unittest.TestCase):
         with self.assertRaises(DependencyViolationError) as cm:
             dep_task.create_time_log(
                 self.test_resource2,
-                datetime.datetime(2014, 3, 16, 9, 0),
-                datetime.datetime(2014, 3, 16, 10, 0)
+                datetime.datetime(2014, 3, 16, 9, 0, tzinfo=pytz.utc),
+                datetime.datetime(2014, 3, 16, 10, 0, tzinfo=pytz.utc)
             )
 
         self.assertEqual(
-            '\'It is not possible to create a TimeLog before %s, which '
+            'u\'It is not possible to create a TimeLog before %s, which '
             'violates the dependency relation of "%s" to "%s"\'' % (
-                datetime.datetime(2014, 3, 16, 10, 0),
+                datetime.datetime(2014, 3, 16, 10, 0, tzinfo=pytz.utc),
                 dep_task.name,
                 task.name
             ),
@@ -886,7 +1149,7 @@ class TimeLogDBTestCase(unittest.TestCase):
         # and creating a TimeLog after that is possible
         dep_task.create_time_log(
             self.test_resource2,
-            datetime.datetime(2014, 3, 16, 10, 0),
-            datetime.datetime(2014, 3, 16, 10, 0)
+            datetime.datetime(2014, 3, 16, 10, 0, tzinfo=pytz.utc),
+            datetime.datetime(2014, 3, 16, 10, 0, tzinfo=pytz.utc)
         )
 

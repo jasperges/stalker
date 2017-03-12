@@ -16,17 +16,19 @@
 # You should have received a copy of the Lesser GNU General Public License
 # along with Stalker.  If not, see <http://www.gnu.org/licenses/>
 
-import unittest
 from stalker import Entity, Type
+from stalker.testing import UnitTestBase
 
 
-class TypeTester(unittest.TestCase):
+class TypeTester(UnitTestBase):
     """Tests Type class
     """
 
     def setUp(self):
         """set up the test
         """
+        super(TypeTester, self).setUp()
+
         self.kwargs = {
             "name": "test type",
             'code': 'test',
@@ -90,21 +92,39 @@ class TypeTester(unittest.TestCase):
         have any target_entity_type
         """
         self.kwargs.pop("target_entity_type")
-        self.assertRaises(TypeError, Type, **self.kwargs)
+        with self.assertRaises(TypeError) as cm:
+            Type(**self.kwargs)
+
+        self.assertEqual(
+            str(cm.exception),
+            'Type.target_entity_type can not be None'
+        )
 
     def test_target_entity_type_argument_can_not_be_None(self):
         """testing if a TypeError will be raised when the target_entity_type
         argument is None
         """
         self.kwargs["target_entity_type"] = None
-        self.assertRaises(TypeError, Type, **self.kwargs)
+        with self.assertRaises(TypeError) as cm:
+            Type(**self.kwargs)
+
+        self.assertEqual(
+            str(cm.exception),
+            'Type.target_entity_type can not be None'
+        )
 
     def test_target_entity_type_argument_can_not_be_empty_string(self):
         """testing if a ValueError will be raised when the target_entity_type
         argument is an empty string
         """
         self.kwargs["target_entity_type"] = ""
-        self.assertRaises(ValueError, Type, **self.kwargs)
+        with self.assertRaises(ValueError) as cm:
+            Type(**self.kwargs)
+
+        self.assertEqual(
+            str(cm.exception),
+            'Type.target_entity_type can not be empty'
+        )
 
     def test_target_entity_type_argument_accepts_strings(self):
         """testing if target_entity_type argument accepts strings
@@ -126,8 +146,13 @@ class TypeTester(unittest.TestCase):
     def test_target_entity_type_attribute_is_read_only(self):
         """testing if the target_entity_type attribute is read-only
         """
-        self.assertRaises(AttributeError, setattr, self.test_type,
-                          "target_entity_type", "Asset")
+        with self.assertRaises(AttributeError) as cm:
+            self.test_type.target_entity_type = "Asset"
+
+        self.assertEqual(
+            str(cm.exception),
+            "can't set attribute"
+        )
 
     def test_target_entity_type_attribute_is_working_properly(self):
         """testing if the target_entity_type attribute is working properly

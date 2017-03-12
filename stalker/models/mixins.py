@@ -16,9 +16,9 @@
 # You should have received a copy of the Lesser GNU General Public License
 # along with Stalker.  If not, see <http://www.gnu.org/licenses/>
 
-import datetime
 import logging
 
+import pytz
 from sqlalchemy import (Table, Column, String, Integer, ForeignKey, Interval,
                         DateTime, PickleType, Float, Enum)
 from sqlalchemy.exc import UnboundExecutionError
@@ -26,10 +26,8 @@ from sqlalchemy.ext.declarative import declared_attr
 from sqlalchemy.orm import synonym, relationship, validates
 
 from stalker import defaults
-from stalker.db.session import DBSession
 from stalker.db.declarative import Base
 from stalker.log import logging_level
-from stalker.models import make_plural, check_circular_dependency
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging_level)
@@ -43,6 +41,7 @@ def create_secondary_table(
         secondary_table_name=None):
     """creates any secondary table
     """
+    from stalker.models import make_plural
     plural_secondary_cls_name = make_plural(secondary_cls_name)
 
     # use the given class_name and the class_table
@@ -266,7 +265,8 @@ class StatusMixin(object):
             # StatusList from the database
 
             # disable autoflush to prevent premature class initialization
-            with DBSession.no_autoflush:
+            from stalker import db
+            with db.DBSession.no_autoflush:
                 try:
                     # try to get a StatusList with the target_entity_type is
                     # matching the class name
@@ -301,7 +301,7 @@ class StatusMixin(object):
             # StatusList.target_entity_type
             if self.__class__.__name__ != status_list.target_entity_type:
                 raise TypeError(
-                    "the given StatusLists' target_entity_type is %s, "
+                    "The given StatusLists' target_entity_type is %s, "
                     "whereas the entity_type of this object is %s" %
                     (status_list.target_entity_type, self.__class__.__name__)
                 )
@@ -313,8 +313,8 @@ class StatusMixin(object):
         """validates the given status value
         """
         from stalker.models.status import Status, StatusList
-
-        with DBSession.no_autoflush:
+        from stalker import db
+        with db.DBSession.no_autoflush:
             if not isinstance(self.status_list, StatusList):
                 raise TypeError(
                     "Please set the %s.status_list attribute first" %
@@ -323,7 +323,7 @@ class StatusMixin(object):
 
         # it is set to None
         if status is None:
-            with DBSession.no_autoflush:
+            with db.DBSession.no_autoflush:
                 status = self.status_list.statuses[0]
 
         # it is not an instance of status or int
@@ -390,7 +390,7 @@ class DateRangeMixin(object):
     +-------+-----+----------+----------------------------------------+
     | start | end | duration | DEFAULTS                               |
     +=======+=====+==========+========================================+
-    |       |     |          | start = datetime.datetime.now()        |
+    |       |     |          | start = datetime.datetime.now(pytz.utc)|
     |       |     |          |                                        |
     |       |     |          | duration = datetime.timedelta(days=10) |
     |       |     |          |                                        |
@@ -412,7 +412,7 @@ class DateRangeMixin(object):
     |       |     |          |                                        |
     |       |     |          | start = end - duration                 |
     +-------+-----+----------+----------------------------------------+
-    |       |     |    X     | start = datetime.datetime.now()        |
+    |       |     |    X     | start = datetime.datetime.now(pytz.utc)|
     |       |     |          |                                        |
     |       |     |          | end = start + duration                 |
     +-------+-----+----------+----------------------------------------+
@@ -437,7 +437,7 @@ class DateRangeMixin(object):
       any condition if the start is available then the value will be
       preserved. If start passes the end the end is also changed
       to a date to keep the timedelta between dates. The default value is
-      datetime.datetime.now()
+      datetime.datetime.now(pytz.utc)
 
     :type start: :class:`datetime.datetime`
 
@@ -467,7 +467,7 @@ class DateRangeMixin(object):
 
     @declared_attr
     def _end(cls):
-        return Column("end", DateTime)
+        return Column("end", DateTime(timezone=True))
 
     def _end_getter(self):
         """The date that the entity should be delivered.
@@ -496,7 +496,7 @@ class DateRangeMixin(object):
 
     @declared_attr
     def _start(cls):
-        return Column("start", DateTime)
+        return Column("start", DateTime(timezone=True))
 
     def _start_getter(self):
         """The date that this entity should start.
@@ -508,7 +508,7 @@ class DateRangeMixin(object):
         :attr:`.DateRangeMixin.duration` value fixed.
         :attr:`.DateRangeMixin.start` should be an instance of
         class:`datetime.datetime` and the default value is
-        :func:`datetime.datetime.now()`
+        :func:`datetime.datetime.now(pytz.utc)`
         """
         return self._start
 
@@ -535,6 +535,7 @@ class DateRangeMixin(object):
 
     def _duration_setter(self, duration_in):
         if duration_in is not None:
+            import datetime
             if isinstance(duration_in, datetime.timedelta):
                 # set the end to None
                 # to make it recalculated
@@ -570,6 +571,7 @@ class DateRangeMixin(object):
         # logger.debug('end      : %s' % end)
         # logger.debug('duration : %s' % duration)
 
+        import datetime
         if not isinstance(start, datetime.datetime):
             start = None
 
@@ -584,7 +586,7 @@ class DateRangeMixin(object):
             # try to calculate the start from end and duration
             if end is None:
                 # set the defaults
-                start = datetime.datetime.now()
+                start = datetime.datetime.now(pytz.utc)
 
                 if duration is None:
                     # set the defaults
@@ -630,11 +632,11 @@ class DateRangeMixin(object):
 
     @declared_attr
     def computed_start(cls):
-        return Column('computed_start', DateTime)
+        return Column('computed_start', DateTime(timezone=True))
 
     @declared_attr
     def computed_end(cls):
-        return Column('computed_end', DateTime)
+        return Column('computed_end', DateTime(timezone=True))
 
     @property
     def computed_duration(self):
@@ -666,7 +668,10 @@ class DateRangeMixin(object):
         trs = timing_resolution.days * 86400 + timing_resolution.seconds
 
         # convert to seconds
-        epoch = datetime.datetime(1970, 1, 1)
+        import datetime
+        import pytz
+        epoch = datetime.datetime(1970, 1, 1, tzinfo=pytz.utc)
+
         diff = dt - epoch
         diff_in_seconds = diff.days * 86400 + diff.seconds
         return epoch + datetime.timedelta(
@@ -812,8 +817,8 @@ class ReferenceMixin(object):
         # all the elements should be instance of stalker.models.entity.Entity
         if not isinstance(reference, Link):
             raise TypeError(
-                "%s.references should be all instances of "
-                "stalker.models.link.Link not %s" %
+                'All the elements in the %s.references should be '
+                'stalker.models.link.Link instances not %s' %
                 (self.__class__.__name__, reference.__class__.__name__)
             )
         return reference
@@ -1404,6 +1409,8 @@ class DAGMixin(object):
                         'parent_cls': parent.__class__.__name__
                     }
                 )
+
+            from stalker.models import check_circular_dependency
             check_circular_dependency(self, parent, 'children')
 
         return parent
@@ -1433,7 +1440,8 @@ class DAGMixin(object):
     def is_container(self):
         """Returns True if the Task has children Tasks
         """
-        with DBSession.no_autoflush:
+        from stalker import db
+        with db.DBSession.no_autoflush:
             return bool(len(self.children))
 
     @property
@@ -1449,6 +1457,7 @@ class DAGMixin(object):
         """
         parents = []
         entity = self.parent
+        # TODO: make this a generator
         while entity:
             parents.append(entity)
             entity = entity.parent

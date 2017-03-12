@@ -21,7 +21,7 @@ import logging
 import os
 
 from sqlalchemy import (Table, Column, Integer, ForeignKey, Boolean, Enum,
-                        DateTime, Float, event)
+                        DateTime, Float, event, CheckConstraint)
 from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.orm import relationship, validates, synonym, reconstructor
@@ -86,6 +86,10 @@ class TimeLog(Entity, DateRangeMixin):
     __auto_name__ = True
     __tablename__ = "TimeLogs"
     __mapper_args__ = {"polymorphic_identity": "TimeLog"}
+
+    __table_args__ = (
+        CheckConstraint('"end" > start'),  # this will be ignored in SQLite3
+    )
 
     time_log_id = Column("id", Integer, ForeignKey("Entities.id"),
                          primary_key=True)
@@ -231,22 +235,50 @@ class TimeLog(Entity, DateRangeMixin):
         with DBSession.no_autoflush:
             # TODO: use other logging levels not just DEBUG
             # logger.debug('resource.time_logs: %s' % resource.time_logs)
-            for time_log in resource.time_logs:
-                # logger.debug('time_log       : %s' % time_log)
-                # logger.debug('time_log.start : %s' % time_log.start)
-                # logger.debug('time_log.end   : %s' % time_log.end)
-                # logger.debug('self.start     : %s' % self.start)
-                # logger.debug('self.end       : %s' % self.end)
-
-                if time_log != self:
-                    if time_log.start == self.start or \
-                       time_log.end == self.end or \
-                       time_log.start < self.end < time_log.end or \
-                       time_log.start < self.start < time_log.end:
-                        raise OverBookedError(
-                            "The resource %s is overly booked with %s and %s" %
-                            (resource, self, time_log),
+            # for time_log in resource.time_logs:
+            #     # logger.debug('time_log       : %s' % time_log)
+            #     # logger.debug('time_log.start : %s' % time_log.start)
+            #     # logger.debug('time_log.end   : %s' % time_log.end)
+            #     # logger.debug('self.start     : %s' % self.start)
+            #     # logger.debug('self.end       : %s' % self.end)
+            #
+            #     if time_log != self:
+            #         if time_log.start == self.start or \
+            #            time_log.end == self.end or \
+            #            time_log.start < self.end < time_log.end or \
+            #            time_log.start < self.start < time_log.end:
+            #             raise OverBookedError(
+            #                 "The resource %s is overly booked with %s and %s" %
+            #                 (resource, self, time_log),
+            #             )
+            
+            from stalker import db
+            from sqlalchemy import or_, and_
+            clashing_time_log_data = \
+                db.DBSession.query(TimeLog.start, TimeLog.end)\
+                    .filter(TimeLog.id != self.id)\
+                    .filter(TimeLog.resource_id == resource.id)\
+                    .filter(
+                        or_(
+                            and_(
+                                TimeLog.start <= self.start,
+                                self.start < TimeLog.end
+                            ),
+                            and_(
+                                TimeLog.start < self.end,
+                                self.end <= TimeLog.end
+                            )
                         )
+                    )\
+                    .first()
+
+            if clashing_time_log_data:
+                raise OverBookedError(
+                    "The resource has another TimeLog between %s and %s" % (
+                        clashing_time_log_data[0], clashing_time_log_data[1]
+                    )
+                )
+
         return resource
 
     def __eq__(self, other):
@@ -262,8 +294,7 @@ class TimeLog(Entity, DateRangeMixin):
 #       later on, will it be ok with TJ
 
 
-class Task(Entity, StatusMixin, DateRangeMixin, ReferenceMixin, ScheduleMixin,
-           DAGMixin):
+class Task(Entity, StatusMixin, DateRangeMixin, ReferenceMixin, ScheduleMixin, DAGMixin):
     """Manages Task related data.
 
     **Introduction**
@@ -513,7 +544,7 @@ class Task(Entity, StatusMixin, DateRangeMixin, ReferenceMixin, ScheduleMixin,
        Because duration tasks do not need time logs there is no way to
        calculate the percent complete by using the time logs. And Percent
        Complete on a duration task is calculated directly from the
-       :attr:`.start` and :attr:`.end` and ``datetime.datetime.now()``.
+       :attr:`.start` and :attr:`.end` and ``datetime.datetime.now(pytz.utc)``.
 
     Even tough, the percent_complete attribute of a task is
     100% the task may not be considered as completed, because it may not be
@@ -765,14 +796,14 @@ class Task(Entity, StatusMixin, DateRangeMixin, ReferenceMixin, ScheduleMixin,
     :param start: The start date and time of this task instance. It is only
       used if the :attr:`.schedule_constraint` attribute is set to
       :attr:`.CONSTRAIN_START` or :attr:`.CONSTRAIN_BOTH`. The default value
-      is `datetime.datetime.now()`.
+      is `datetime.datetime.now(pytz.utc)`.
 
     :type start: :class:`datetime.datetime`
 
     :param end: The end date and time of this task instance. It is only used if
       the :attr:`.schedule_constraint` attribute is set to
       :attr:`.CONSTRAIN_END` or :attr:`.CONSTRAIN_BOTH`. The default value is
-      `datetime.datetime.now()`.
+      `datetime.datetime.now(pytz.utc)`.
 
     :type end: :class:`datetime.datetime`
 
@@ -986,22 +1017,6 @@ class Task(Entity, StatusMixin, DateRangeMixin, ReferenceMixin, ScheduleMixin,
         cascade='all, delete-orphan',
         doc="""A list of :class:`.Version` instances showing the files created
         for this task.
-        """
-    )
-
-    computed_start = Column(
-        DateTime,
-        doc="""A :class:`~datetime.datetime` instance showing the start value
-        computed by **TaskJuggler**. It is None if this task is not scheduled
-        yet.
-        """
-    )
-
-    computed_end = Column(
-        DateTime,
-        doc="""A :class:`~datetime.datetime` instance showing the end value
-        computed by **TaskJuggler**. It is None if this task is not scheduled
-        yet.
         """
     )
 
@@ -1473,7 +1488,7 @@ class Task(Entity, StatusMixin, DateRangeMixin, ReferenceMixin, ScheduleMixin,
 
                         message = \
                             'The supplied parent and the project is not ' \
-                            'matching in %s, Stalker will use the parent ' \
+                            'matching in %s, Stalker will use the parents ' \
                             'project (%s) as the parent of this %s' % (
                                 self,
                                 self.parent.project,
@@ -1534,8 +1549,9 @@ class Task(Entity, StatusMixin, DateRangeMixin, ReferenceMixin, ScheduleMixin,
 
                 # it was a leaf but now a parent, so set the start to max and
                 # end to min
-                self._start = datetime.datetime.max
-                self._end = datetime.datetime.min
+                import pytz
+                self._start = datetime.datetime.max.replace(tzinfo=pytz.utc)
+                self._end = datetime.datetime.min.replace(tzinfo=pytz.utc)
 
             # extend start and end dates
             self._expand_dates(self, child.start, child.end)
@@ -1674,7 +1690,7 @@ class Task(Entity, StatusMixin, DateRangeMixin, ReferenceMixin, ScheduleMixin,
 
         if not isinstance(version, Version):
             raise TypeError(
-                "%(class)s.versions should only have"
+                "%(class)s.versions should only have "
                 "stalker.models.version.Version instances, and not %(class)s" %
                 {'class': self.__class__.__name__}
             )
@@ -1742,6 +1758,7 @@ class Task(Entity, StatusMixin, DateRangeMixin, ReferenceMixin, ScheduleMixin,
             if task.end < end:
                 task.end = end
 
+    # TODO: Why these methods are not in the DateRangeMixin class.
     @validates('computed_start')
     def _validate_computed_start(self, key, computed_start):
         """validates the given computed_start value
@@ -1760,7 +1777,8 @@ class Task(Entity, StatusMixin, DateRangeMixin, ReferenceMixin, ScheduleMixin,
         """validates the given start value
         """
         if start_in is None:
-            start_in = self.project.round_time(datetime.datetime.now())
+            import pytz
+            start_in = self.project.round_time(datetime.datetime.now(pytz.utc))
         elif not isinstance(start_in, datetime.datetime):
             raise TypeError(
                 '%s.start should be an instance of datetime.datetime, not %s' %
@@ -1970,7 +1988,8 @@ class Task(Entity, StatusMixin, DateRangeMixin, ReferenceMixin, ScheduleMixin,
         else:
             if self.schedule_model == 'duration':
                 logger.debug('calculating percent_complete from duration')
-                now = datetime.datetime.now()  # TODO: use utc-0
+                import pytz
+                now = datetime.datetime.now(pytz.utc)
                 if self.end <= now:
                     return 100.0
                 elif self.start >= now:
@@ -2973,7 +2992,7 @@ def update_time_log_task_parents_for_end(tlog, new_end, old_end, initiator):
     :param initiator: not used
     :return: None
     """
-    logger.debug('received set event for new_end in target : %s' % tlog)
+    logger.debug('Received set event for new_end in target : %s' % tlog)
     if tlog.start and isinstance(old_end, datetime.datetime) \
        and isinstance(new_end, datetime.datetime):
         old_duration = old_end - tlog.start
@@ -3092,8 +3111,9 @@ def update_task_date_values(task, removed_child, initiator):
     """
     # update start and end date values of the task
     with DBSession.no_autoflush:
-        start = datetime.datetime.max
-        end = datetime.datetime.min
+        import pytz
+        start = datetime.datetime.max.replace(tzinfo=pytz.utc)
+        end = datetime.datetime.min.replace(tzinfo=pytz.utc)
         for child in task.children:
             if child is not removed_child:
                 if child.start < start:
@@ -3101,13 +3121,16 @@ def update_task_date_values(task, removed_child, initiator):
                 if child.end > end:
                     end = child.end
 
-        if start != datetime.datetime.max and end != datetime.datetime.min:
+        max_date = datetime.datetime.max.replace(tzinfo=pytz.utc)
+        min_date = datetime.datetime.min.replace(tzinfo=pytz.utc)
+        if start != max_date and end != min_date:
             task.start = start
             task.end = end
         else:
             # no child left
             # set it to now
-            task.start = datetime.datetime.now()
+            import pytz
+            task.start = datetime.datetime.now(pytz.utc)
             # this will also update end
 
 
@@ -3126,3 +3149,73 @@ def removed_a_dependency(task, task_dependent, initiator):
     task.update_status_with_dependent_statuses(
         removing=task_dependent.depends_to
     )
+
+
+@event.listens_for(TimeLog.__table__, 'after_create')
+def add_exclude_constraint(table, connection, **kwargs):
+    """adds the PostgreSQL specific ExcludeConstraint
+    """
+    from sqlalchemy import DDL
+    from sqlalchemy.exc import ProgrammingError
+
+    if connection.engine.dialect.name == 'postgresql':
+        logger.debug('add_exclude_constraint is Running!')
+        # try to create the extension first
+        create_extension = DDL("CREATE EXTENSION btree_gist;")
+        try:
+            logger.debug('running "btree_gist" extension creation!')
+            create_extension.execute(bind=connection)
+            logger.debug('successfully created "btree_gist" extension!')
+        except ProgrammingError as e:
+            logger.debug('add_exclude_constraint: %s' % e)
+
+        # create the ts_to_box sql function
+        ts_to_box = DDL("""CREATE FUNCTION ts_to_box(TIMESTAMPTZ, TIMESTAMPTZ)
+RETURNS BOX
+AS
+$$
+    SELECT  BOX(
+      POINT(DATE_PART('epoch', $1), 0),
+      POINT(DATE_PART('epoch', $2 - interval '1 minute'), 1)
+    )
+$$
+LANGUAGE 'sql'
+IMMUTABLE;
+""")
+        try:
+            logger.debug(
+                'creating ts_to_box function!'
+            )
+            ts_to_box.execute(bind=connection)
+            logger.debug(
+                'successfully created ts_to_box function'
+            )
+        except ProgrammingError as e:
+            logger.debug(
+                'failed creating ts_to_box function!: %s' % e
+            )
+
+        # create exclude constraint
+        exclude_constraint = \
+            DDL("""ALTER TABLE "TimeLogs" ADD CONSTRAINT
+                overlapping_time_logs EXCLUDE USING GIST (
+                  resource_id WITH =,
+                  ts_to_box(start, "end") WITH &&
+                )"""
+            )
+        try:
+            logger.debug(
+                'running ExcludeConstraint for "TimeLogs" table creation!'
+            )
+            exclude_constraint.execute(bind=connection)
+            logger.debug(
+                'successfully created ExcludeConstraint for "TimeLogs" table!'
+            )
+        except ProgrammingError as e:
+            logger.debug(
+                'failed creating ExcludeConstraint for TimeLogs table!: %s' % e
+            )
+    else:
+        logger.debug(
+            'it is not a PostgreSQL database not creating Exclude Constraint'
+        )

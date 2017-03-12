@@ -16,10 +16,7 @@
 # You should have received a copy of the Lesser GNU General Public License
 # along with Stalker.  If not, see <http://www.gnu.org/licenses/>
 
-from sqlalchemy.orm import (
-    scoped_session,
-    sessionmaker,
-)
+from sqlalchemy.orm import scoped_session, sessionmaker
 
 # SQLAlchemy session manager
 DBSession = scoped_session(

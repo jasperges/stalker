@@ -16,75 +16,45 @@
 # You should have received a copy of the Lesser GNU General Public License
 # along with Stalker.  If not, see <http://www.gnu.org/licenses/>
 
-import unittest
 import logging
 from stalker import log
+from stalker.testing import UnitTestBase
 
 logger = logging.getLogger(__name__)
 logger.setLevel(log.logging_level)
 
 
-class DatabaseTester(unittest.TestCase):
+class DatabaseTester(UnitTestBase):
     """tests the database and connection to the database
     """
 
-    def setUp(self):
-        """setup the tests
-        """
-        # just set the default admin creation to true
-        # some tests are relying on that
+    # def setUp(self):
+    #     """set the test up
+    #     """
+    #     super(DatabaseTester, self).setUp()
 
-        from stalker import db, defaults
-        db.DBSession.remove()
-        defaults.auto_create_admin = True
-        defaults.admin_name = "admin"
-        defaults.admin_password = "admin"
-
-        self.test_database_uri = "sqlite:///:memory:"
-
-        self.files_to_remove = []
-
-    def tearDown(self):
-        """tearDown the tests
-        """
-        import os
-        from stalker import db
-        db.DBSession.remove()
-        for f in self.files_to_remove:
-            if os.path.isdir(f):
-                os.rmdir(f)
-            elif os.path.isfile(f):
-                os.remove(f)
-
-    def test_creating_a_custom_in_memory_db(self):
-        """testing if a custom in-memory sqlite database will be created
-        """
-        from stalker import db
-        # create a database in memory
-        db.setup({
-            "sqlalchemy.url": "sqlite:///:memory:",
-            "sqlalchemy.echo": False,
-        })
-
-        # try to persist a user and get it back
-        # create a new user
-        kwargs = {
-            "name": "Erkan Ozgur Yilmaz",
-            "login": "eoyilmaz",
-            "email": "eoyilmaz@gmail.com",
-            #"created_by": admin,
-            "password": "password",
-        }
-
-        from stalker import User
-        new_user = User(**kwargs)
-        db.DBSession.add(new_user)
-        db.DBSession.commit()
-
-        # now check if the newUser is there
-        new_user_db = User.query.filter_by(name=kwargs["name"]).first()
-
-        self.assertTrue(new_user_db is not None)
+    # def test_creating_a_custom_in_memory_db(self):
+    #     """testing if a custom in-memory sqlite database will be created
+    #     """
+    #     # try to persist a user and get it back
+    #     # create a new user
+    #     kwargs = {
+    #         "name": "Erkan Ozgur Yilmaz",
+    #         "login": "eoyilmaz",
+    #         "email": "eoyilmaz@gmail.com",
+    #         #"created_by": admin,
+    #         "password": "password",
+    #     }
+    #
+    #     from stalker import db, User
+    #     new_user = User(**kwargs)
+    #     db.DBSession.add(new_user)
+    #     db.DBSession.commit()
+    #
+    #     # now check if the newUser is there
+    #     new_user_db = User.query.filter_by(name=kwargs["name"]).first()
+    #
+    #     self.assertTrue(new_user_db is not None)
 
     def test_default_admin_creation(self):
         """testing if a default admin is created
@@ -92,9 +62,6 @@ class DatabaseTester(unittest.TestCase):
         # set default admin creation to True
         from stalker import db, defaults
         defaults.auto_create_admin = True
-
-        db.setup()
-        db.init()
 
         # check if there is an admin
         from stalker import User
@@ -109,21 +76,11 @@ class DatabaseTester(unittest.TestCase):
         # set default admin creation to True
         from stalker import db, defaults
         defaults.auto_create_admin = True
-
-        db.setup({
-            "sqlalchemy.url": self.test_database_uri
-        })
         db.init()
 
-        # try to call the db.setup for a second time and see if there are more
+        # try to call the init() for a second time and see if there are more
         # than one admin
-
-        db.setup({
-            "sqlalchemy.url": self.test_database_uri
-        })
         db.init()
-
-        self._createdDB = True
 
         # and get how many admin is created, (it is impossible to create
         # second one because the tables.simpleEntity.c.nam.unique=True
@@ -141,9 +98,15 @@ class DatabaseTester(unittest.TestCase):
         from stalker import db, defaults
         defaults.auto_create_admin = False
 
-        # setup the db
-        db.setup()
+        # create a clean database
+        self.tearDown()
+
+        # init the db
+        db.setup(self.config)
         db.init()
+
+        # Restore auto admin creation
+        defaults.auto_create_admin = True
 
         # check if there is a use with name admin
         from stalker import User
@@ -163,9 +126,6 @@ class DatabaseTester(unittest.TestCase):
     def test_non_unique_names_on_different_entity_type(self):
         """testing if there can be non-unique names for different entity types
         """
-        from stalker import db
-        db.setup()
-
         # try to create a user and an entity with same name
         # expect Nothing
         kwargs = {
@@ -196,11 +156,6 @@ class DatabaseTester(unittest.TestCase):
     def test_ticket_status_initialization(self):
         """testing if the ticket statuses are correctly created
         """
-        from stalker import db
-        db.setup()
-        db.init()
-
-        #ticket_statuses = Status.query.all()
         from stalker import StatusList
         ticket_status_list = StatusList.query \
             .filter(StatusList.name == 'Ticket Statuses') \
@@ -224,11 +179,6 @@ class DatabaseTester(unittest.TestCase):
     def test_daily_status_initialization(self):
         """testing if the daily statuses are correctly created
         """
-        from stalker import db
-        db.setup()
-        db.init()
-
-        #ticket_statuses = Status.query.all()
         from stalker import StatusList
         daily_status_list = StatusList.query \
             .filter(StatusList.name == 'Daily Statuses') \
@@ -258,7 +208,6 @@ class DatabaseTester(unittest.TestCase):
         Permissions
         """
         from stalker import db
-        db.setup()
 
         # create a new dummy class
         class TestClass(object):
@@ -286,18 +235,12 @@ class DatabaseTester(unittest.TestCase):
         not an instance of type or str
         """
         from stalker import db
-        db.setup()
-        self.assertRaises(TypeError, db.register, 23425)
+        with self.assertRaises(TypeError):
+            db.register(23425)
 
     def test_permissions_created_for_all_the_classes(self):
         """testing if Permission instances are created for classes in the SOM
         """
-        from stalker import db
-        db.DBSession.remove()
-        # DBSession.close()
-        db.setup()
-        db.init()
-
         class_names = [
             'Asset', 'AuthenticationLog', 'Budget', 'BudgetEntry', 'Client',
             'Good', 'Group', 'Permission', 'User', 'Department',
@@ -329,25 +272,16 @@ class DatabaseTester(unittest.TestCase):
         """testing if the Permissions are created only once and trying to call
         __init_db__ will not raise any error
         """
-        # create the environment variable and point it to a temp directory
-        import os
-        import tempfile
-        temp_db_path = tempfile.mkdtemp()
-        temp_db_filename = 'stalker.db'
-        temp_db_full_path = os.path.join(temp_db_path, temp_db_filename)
-
-        temp_db_url = 'sqlite:///' + temp_db_full_path
-
         from stalker import db
         db.DBSession.remove()
         # DBSession.close()
-        db.setup(settings={'sqlalchemy.url': temp_db_url})
+        db.setup(self.config)
         db.init()
 
         # this should not give any error
         db.DBSession.remove()
 
-        db.setup(settings={'sqlalchemy.url': temp_db_url})
+        db.setup(self.config)
         db.init()
 
         # and we still have correct amount of Permissions
@@ -355,38 +289,23 @@ class DatabaseTester(unittest.TestCase):
         permissions = Permission.query.all()
         self.assertEqual(len(permissions), 420)
 
-        # clean the test
-        db.DBSession.remove()
-        import shutil
-        shutil.rmtree(temp_db_path)  # TODO: This is bad practice, use tearDown
-
     def test_ticket_statuses_are_not_created_over_and_over_again(self):
         """testing if the Ticket Statuses are created only once and trying to
         call __init_db__ will not raise any error
         """
         # create the environment variable and point it to a temp directory
-        import tempfile
-        import os
-        temp_db_path = tempfile.mkdtemp()
-        temp_db_filename = 'stalker.db'
-        temp_db_full_path = os.path.join(temp_db_path, temp_db_filename)
-
-        temp_db_url = 'sqlite:///' + temp_db_full_path
-
         from stalker import db
         db.DBSession.remove()
-        # DBSession.close()
-        db.setup(settings={'sqlalchemy.url': temp_db_url})
+
+        db.setup(self.config)
         db.init()
 
         # this should not give any error
-        # DBSession.remove()
-        db.setup(settings={'sqlalchemy.url': temp_db_url})
+        db.setup(self.config)
         db.init()
 
         # this should not give any error
-        # DBSession.remove()
-        db.setup(settings={'sqlalchemy.url': temp_db_url})
+        db.setup(self.config)
         db.init()
 
         # and we still have correct amount of Statuses
@@ -398,20 +317,10 @@ class DatabaseTester(unittest.TestCase):
             StatusList.query.filter_by(target_entity_type='Ticket').first()
         self.assertTrue(status_list is not None)
         self.assertEqual(status_list.name, 'Ticket Statuses')
-        # self.fail(temp_db_url)
-
-        # clean the test
-        db.DBSession.remove()
-        import shutil
-        shutil.rmtree(temp_db_path)  # again this is bad practice use TearDown
 
     def test_task_status_initialization(self):
         """testing if the task statuses are correctly created
         """
-        from stalker import db
-        db.setup()
-        db.init()
-
         from stalker import StatusList
         task_status_list = StatusList.query \
             .filter(StatusList.name == 'Task Statuses') \
@@ -470,10 +379,6 @@ class DatabaseTester(unittest.TestCase):
     def test_asset_status_initialization(self):
         """testing if the asset statuses are correctly created
         """
-        from stalker import db
-        db.setup()
-        db.init()
-
         from stalker import StatusList
         asset_status_list = StatusList.query \
             .filter(StatusList.name == 'Asset Statuses') \
@@ -524,10 +429,6 @@ class DatabaseTester(unittest.TestCase):
     def test_shot_status_initialization(self):
         """testing if the shot statuses are correctly created
         """
-        from stalker import db
-        db.setup()
-        db.init()
-
         from stalker import StatusList
         shot_status_list = StatusList.query \
             .filter(StatusList.name == 'Shot Statuses') \
@@ -578,10 +479,6 @@ class DatabaseTester(unittest.TestCase):
     def test_sequence_status_initialization(self):
         """testing if the sequence statuses are correctly created
         """
-        from stalker import db
-        db.setup()
-        db.init()
-
         from stalker import StatusList
         sequence_status_list = StatusList.query \
             .filter(StatusList.name == 'Sequence Statuses') \
@@ -640,19 +537,7 @@ class DatabaseTester(unittest.TestCase):
         """testing if the task statuses are correctly created when there is a
         StatusList for Task is already created
         """
-        from stalker import db
-        db.setup()
-
         from stalker import StatusList
-        task_status_list = StatusList(
-            name='Task Statuses',
-            target_entity_type='Task'
-        )
-        db.DBSession.add(task_status_list)
-        db.DBSession.commit()
-
-        db.init()
-
         task_status_list = StatusList.query \
             .filter(StatusList.target_entity_type == 'Task') \
             .first()
@@ -711,19 +596,7 @@ class DatabaseTester(unittest.TestCase):
         """testing if the asset statuses are correctly created when there is a
         StatusList for Sequence is already created
         """
-        from stalker import db
-        db.setup()
-
-        from stalker import StatusList
-        asset_status_list = StatusList(
-            name='Asset Statuses',
-            target_entity_type='Asset'
-        )
-        db.DBSession.add(asset_status_list)
-        db.DBSession.commit()
-
-        db.init()
-
+        from stalker import db, StatusList
         asset_status_list = StatusList.query \
             .filter(StatusList.name == 'Asset Statuses') \
             .first()
@@ -782,19 +655,7 @@ class DatabaseTester(unittest.TestCase):
         """testing if the shot statuses are correctly created when there is a
         StatusList for Shot is already created
         """
-        from stalker import db
-        db.setup()
-
         from stalker import StatusList
-        shot_status_list = StatusList(
-            name='Shot Statuses',
-            target_entity_type='Shot'
-        )
-        db.DBSession.add(shot_status_list)
-        db.DBSession.commit()
-
-        db.init()
-
         shot_status_list = StatusList.query \
             .filter(StatusList.name == 'Shot Statuses') \
             .first()
@@ -853,19 +714,7 @@ class DatabaseTester(unittest.TestCase):
         """testing if the sequence statuses are correctly created when there is
         a StatusList for Sequence is already created
         """
-        from stalker import db
-        db.setup()
-
         from stalker import StatusList
-        sequence_status_list = StatusList(
-            name='Sequence Statuses',
-            target_entity_type='Sequence'
-        )
-        db.DBSession.add(sequence_status_list)
-        db.DBSession.commit()
-
-        db.init()
-
         sequence_status_list = StatusList.query \
             .filter(StatusList.name == 'Sequence Statuses') \
             .first()
@@ -923,10 +772,6 @@ class DatabaseTester(unittest.TestCase):
     def test_review_status_initialization(self):
         """testing if the review statuses are correctly created
         """
-        from stalker import db
-        db.setup()
-        db.init()
-
         from stalker import StatusList
         review_status_list = StatusList.query \
             .filter(StatusList.name == 'Review Statuses') \
@@ -979,7 +824,13 @@ class DatabaseTester(unittest.TestCase):
             'status_names': ['A', 'B'],
             'status_codes': ['A', 'B']
         }
-        self.assertRaises(ValueError, create_entity_statuses, **kwargs)
+        with self.assertRaises(ValueError) as cm:
+            create_entity_statuses(**kwargs)
+
+        self.assertEqual(
+            str(cm.exception),
+            'Please supply entity_type'
+        )
 
     def test___create_entity_statuses_no_status_names_supplied(self):
         """testing db.__create_entity_statuses() will raise a ValueError when
@@ -990,7 +841,13 @@ class DatabaseTester(unittest.TestCase):
             'entity_type': 'Hede Hodo',
             'status_codes': ['A', 'B']
         }
-        self.assertRaises(ValueError, create_entity_statuses, **kwargs)
+        with self.assertRaises(ValueError) as cm:
+            create_entity_statuses(**kwargs)
+
+        self.assertEqual(
+            str(cm.exception),
+            'Please supply status names'
+        )
 
     def test___create_entity_statuses_no_status_codes_supplied(self):
         """testing db.__create_entity_statuses() will raise a ValueError when
@@ -1001,49 +858,35 @@ class DatabaseTester(unittest.TestCase):
             'entity_type': 'Hede Hodo',
             'status_names': ['A', 'B']
         }
-        self.assertRaises(ValueError, create_entity_statuses, **kwargs)
+        with self.assertRaises(ValueError) as cm:
+            create_entity_statuses(**kwargs)
+
+        self.assertEqual(
+            str(cm.exception),
+            'Please supply status codes'
+        )
 
     def test_initialization_of_alembic_version_table(self):
         """testing if the db.init() will also create a table called
         alembic_version
         """
-        import os
-        import tempfile
-        temp_db_path = os.path.join(tempfile.mktemp(suffix='.db'))
-        self.files_to_remove.append(temp_db_path)
-
         from stalker import db
-        db.setup({
-            'sqlalchemy.url': 'sqlite:///%s' % temp_db_path
-        })
-        db.init()
         sql_query = 'select version_num from "alembic_version"'
         version_num = \
             db.DBSession.connection().execute(sql_query).fetchone()[0]
-        self.assertEqual('0063f547dc2e', version_num)
+        self.assertEqual('31b1e22b455e', version_num)
 
     def test_initialization_of_alembic_version_table_multiple_times(self):
         """testing if the db.create_alembic_table() will handle initializing
         the table multiple times
         """
-        import os
-        import tempfile
-        temp_db_path = os.path.join(tempfile.mkdtemp(), 'stalker.db')
-        self.files_to_remove.append(temp_db_path)
-        db_config = {'sqlalchemy.url': 'sqlite:///%s' % temp_db_path}
-
         from stalker import db
-        db.DBSession.remove()
-        db.setup(db_config)
-        db.init()
-
         sql_query = 'select version_num from "alembic_version"'
         version_num = \
             db.DBSession.connection().execute(sql_query).fetchone()[0]
-        self.assertEqual('0063f547dc2e', version_num)
+        self.assertEqual('31b1e22b455e', version_num)
 
         db.DBSession.remove()
-        db.setup(db_config)
         db.init()
         db.init()
         db.init()
@@ -1059,13 +902,7 @@ class DatabaseTester(unittest.TestCase):
         version of the database is not equal to the alembic_version of the
         current Stalker release
         """
-        import os
-        import tempfile
-        temp_db_path = os.path.join(tempfile.mktemp(suffix='.db'))
-        self.files_to_remove.append(temp_db_path)
-        config = {'sqlalchemy.url': 'sqlite:///%s' % temp_db_path}
         from stalker import db
-        db.setup(config)
         db.init()
 
         # now change the alembic_version
@@ -1086,7 +923,7 @@ class DatabaseTester(unittest.TestCase):
 
         # re-setup
         with self.assertRaises(ValueError) as cm:
-            db.setup(config)
+            db.setup(self.config)
 
         self.assertEqual(
             str(cm.exception),
@@ -1097,19 +934,8 @@ class DatabaseTester(unittest.TestCase):
         """testing if the db.create_repo_env_vars() will create environment
         variables for each repository in the system
         """
-        import os
-        import tempfile
-        temp_db_path = os.path.join(tempfile.mkdtemp(), 'stalker.db')
-        self.files_to_remove.append(temp_db_path)
-        db_config = {'sqlalchemy.url': 'sqlite:///%s' % temp_db_path}
-
-        from stalker import db
-        db.DBSession.remove()
-        db.setup(db_config)
-        db.init()
-
         # create a couple of repositories
-        from stalker import Repository
+        from stalker import db, Repository
         repo1 = Repository(name='Repo1')
         repo2 = Repository(name='Repo2')
         repo3 = Repository(name='Repo3')
@@ -1119,6 +945,7 @@ class DatabaseTester(unittest.TestCase):
         db.DBSession.commit()
 
         # remove any auto created repo vars
+        import os
         for repo in all_repos:
             try:
                 os.environ.pop('REPO%s' % repo.id)
@@ -1134,7 +961,7 @@ class DatabaseTester(unittest.TestCase):
         db.DBSession.remove()
 
         # reconnect
-        db.setup(db_config)
+        db.setup(self.config)
 
         all_repos = Repository.query.all()
 
@@ -1145,17 +972,6 @@ class DatabaseTester(unittest.TestCase):
     def test_db_init_with_studio_instance(self):
         """testing db.init() using existing Studio instance for config values
         """
-        import os
-        import tempfile
-        temp_db_path = os.path.join(tempfile.mkdtemp(), 'stalker.db')
-        self.files_to_remove.append(temp_db_path)
-        db_config = {'sqlalchemy.url': 'sqlite:///%s' % temp_db_path}
-
-        from stalker import db
-        db.DBSession.remove()
-        db.setup(db_config)
-        db.init()
-
         # check the defaults
         from stalker import defaults
         self.assertNotEqual(defaults.daily_working_hours, 8)
@@ -1201,7 +1017,7 @@ class DatabaseTester(unittest.TestCase):
         db.DBSession.remove()
 
         # re-init db
-        db.setup(db_config)
+        db.setup(self.config)
 
         # and expect the defaults to be updated with studio defaults
         self.assertEqual(defaults.daily_working_hours, 8)
@@ -1212,8 +1028,8 @@ class DatabaseTester(unittest.TestCase):
                          datetime.timedelta(minutes=5))
 
 
-class DatabaseModelsTester(unittest.TestCase):
-    """tests the database model
+class DatabaseModelsTester(UnitTestBase):
+    """tests the database model with a PostgreSQL database
 
     NOTE TO DEVELOPERS:
 
@@ -1226,23 +1042,6 @@ class DatabaseModelsTester(unittest.TestCase):
     to be done in this way for now. Mocks can not be used because every created
     object goes to the database, so they need to be real objects.
     """
-
-    def setUp(self):
-        """setup the test
-        """
-        # create a test database, possibly an in memory database
-        from stalker import db
-        db.setup()
-        db.init()
-
-    def tearDown(self):
-        """tearing down the test
-        """
-        from stalker import db, defaults
-        db.DBSession.remove()
-        # restore defaults.timing_resolution
-        import datetime
-        defaults.timing_resolution = datetime.timedelta(hours=1)
 
     def test_persistence_of_Asset(self):
         """testing the persistence of Asset
@@ -2017,8 +1816,9 @@ class DatabaseModelsTester(unittest.TestCase):
 
         description = 'this is a time log'
         import datetime
-        start = datetime.datetime(2013, 1, 10)
-        end = datetime.datetime(2013, 1, 13)
+        import pytz
+        start = datetime.datetime(2013, 1, 10, tzinfo=pytz.utc)
+        end = datetime.datetime(2013, 1, 13, tzinfo=pytz.utc)
 
         from stalker import User
         user1 = User(
@@ -2095,8 +1895,8 @@ class DatabaseModelsTester(unittest.TestCase):
         test_time_log = TimeLog(
             task=test_task,
             resource=user1,
-            start=datetime.datetime(2013, 1, 10),
-            end=datetime.datetime(2013, 1, 13),
+            start=datetime.datetime(2013, 1, 10, tzinfo=pytz.utc),
+            end=datetime.datetime(2013, 1, 13, tzinfo=pytz.utc),
             description=description
         )
 
@@ -2116,6 +1916,121 @@ class DatabaseModelsTester(unittest.TestCase):
         self.assertEqual(user1, test_time_log_db.resource)
         self.assertEqual(test_task, test_time_log_db.task)
 
+    def test_persistence_of_TimeLog_raw_sql(self):
+        """testing the persistence of TimeLog
+        """
+        import datetime
+        import pytz
+        start = datetime.datetime(2013, 1, 10, tzinfo=pytz.utc)
+        end = datetime.datetime(2013, 1, 13, tzinfo=pytz.utc)
+
+        from stalker import User
+        user1 = User(
+            name='User1',
+            login='user1',
+            email='user1@users.com',
+            password='pass'
+        )
+
+        user2 = User(
+            name='User2',
+            login='user2',
+            email='user2@users.com',
+            password='pass'
+        )
+
+        from stalker import Status
+        stat1 = Status(
+            name='Work In Progress',
+            code='WIP'
+        )
+
+        stat2 = Status(
+            name='Completed',
+            code='CMPL'
+        )
+
+        from stalker import Repository
+        repo = Repository(
+            name='Commercials Repository',
+            linux_path='/mnt/shows',
+            windows_path='S:/',
+            osx_path='/mnt/shows'
+        )
+
+        from stalker import StatusList
+        proj_status_list = StatusList(
+            name='Project Statuses',
+            statuses=[stat1, stat2],
+            target_entity_type='Project'
+        )
+
+        task_status_list = StatusList.query\
+            .filter_by(target_entity_type='Task').first()
+
+        from stalker import Type
+        projtype = Type(
+            name='Commercial Project',
+            code='comm',
+            target_entity_type='Project'
+        )
+
+        from stalker import Project
+        proj1 = Project(
+            name='Test Project',
+            code='tp',
+            type=projtype,
+            status_list=proj_status_list,
+            repository=repo
+        )
+
+        from stalker import Task
+        test_task = Task(
+            name='Test Task',
+            start=start,
+            end=end,
+            resources=[user1, user2],
+            project=proj1,
+            status_list=task_status_list,
+            responsible=[user1]
+        )
+
+        from stalker import db
+        db.DBSession.add(test_task)
+        db.DBSession.commit()
+
+        # now insert a new TimeLog in to the Timelogs table which has the same
+        # value for start and end arguments, which should automatically raise
+        # an IntegrityError by the database itself.
+
+        # try insert start = start
+        from stalker import TimeLog
+        new_tl1 = TimeLog(
+            task=test_task,
+            resource=user1,
+            start=start,
+            end=end
+        )
+        db.DBSession.add(new_tl1)
+        db.DBSession.commit()
+
+        # create a new TimeLog
+        new_tl2 = TimeLog(
+            task=test_task,
+            resource=user1,
+            start=end,
+            end=end + datetime.timedelta(hours=3)
+        )
+        db.DBSession.add(new_tl2)
+        db.DBSession.commit()
+
+        # update it to have overlapping timing values with new_tl1
+        from sqlalchemy.exc import IntegrityError
+        new_tl2.start = start + datetime.timedelta(hours=2)
+
+        with self.assertRaises(IntegrityError) as cm:
+            db.DBSession.commit()
+
     def test_persistence_of_Client(self):
         """testing the persistence of Client
         """
@@ -2126,8 +2041,9 @@ class DatabaseModelsTester(unittest.TestCase):
         created_by = None
         updated_by = None
         import datetime
-        date_created = datetime.datetime.now()
-        date_updated = datetime.datetime.now()
+        import pytz
+        date_created = datetime.datetime.now(pytz.utc)
+        date_updated = datetime.datetime.now(pytz.utc)
 
         from stalker import Client
         test_client = Client(
@@ -2399,8 +2315,9 @@ class DatabaseModelsTester(unittest.TestCase):
         created_by = None
         updated_by = None
         import datetime
-        date_created = datetime.datetime.now()
-        date_updated = datetime.datetime.now()
+        import pytz
+        date_created = datetime.datetime.now(pytz.utc)
+        date_updated = datetime.datetime.now(pytz.utc)
 
         from stalker import db, Department
         test_dep = Department(
@@ -2514,7 +2431,8 @@ class DatabaseModelsTester(unittest.TestCase):
         created_by = None
         updated_by = None
         import datetime
-        date_created = date_updated = datetime.datetime.now()
+        import pytz
+        date_created = date_updated = datetime.datetime.now(pytz.utc)
 
         from stalker import Tag
         tag1 = Tag(
@@ -2532,7 +2450,8 @@ class DatabaseModelsTester(unittest.TestCase):
         created_by = None
         updated_by = None
         import datetime
-        date_created = date_updated = datetime.datetime.now()
+        import pytz
+        date_created = date_updated = datetime.datetime.now(pytz.utc)
 
         tag2 = Tag(
             name=name,
@@ -2553,7 +2472,7 @@ class DatabaseModelsTester(unittest.TestCase):
         description = "this is for testing purposes"
         created_by = None
         updated_by = None
-        date_created = date_updated = datetime.datetime.now()
+        date_created = date_updated = datetime.datetime.now(pytz.utc)
 
         from stalker import Entity
         test_entity = Entity(
@@ -3204,7 +3123,9 @@ class DatabaseModelsTester(unittest.TestCase):
         """
         # create mock objects
         import datetime
-        start = datetime.date.today() + datetime.timedelta(10)
+        import pytz
+        start = datetime.datetime(2016, 11, 17, tzinfo=pytz.utc) + \
+            datetime.timedelta(10)
         end = start + datetime.timedelta(days=20)
 
         from stalker import db, User
@@ -3373,8 +3294,8 @@ class DatabaseModelsTester(unittest.TestCase):
         )
         dt = datetime.datetime
         td = datetime.timedelta
-        new_project._computed_start = dt.now()
-        new_project._computed_end = dt.now() + td(10)
+        new_project._computed_start = dt.now(pytz.utc)
+        new_project._computed_end = dt.now(pytz.utc) + td(10)
 
         db.DBSession.add_all([task1, task2])
         db.DBSession.commit()
@@ -3952,7 +3873,6 @@ class DatabaseModelsTester(unittest.TestCase):
                 },
                 sort_keys=True
             ),
-
         }
 
         test_simple_entity = SimpleEntity(**kwargs)
@@ -4302,7 +4222,8 @@ class DatabaseModelsTester(unittest.TestCase):
         created_by = None
         updated_by = None
         import datetime
-        date_created = date_updated = datetime.datetime.now()
+        import pytz
+        date_created = date_updated = datetime.datetime.now(pytz.utc)
 
         from stalker import db, Tag
         tag = Tag(
@@ -4434,29 +4355,30 @@ class DatabaseModelsTester(unittest.TestCase):
 
         # time logs
         import datetime
+        import pytz
         time_log1 = TimeLog(
             task=child_task1,
             resource=user1,
-            start=datetime.datetime.now(),
-            end=datetime.datetime.now() + datetime.timedelta(1)
+            start=datetime.datetime.now(pytz.utc),
+            end=datetime.datetime.now(pytz.utc) + datetime.timedelta(1)
         )
-        task1.computed_start = datetime.datetime.now()
+        task1.computed_start = datetime.datetime.now(pytz.utc)
         task1.computed_end = \
-            datetime.datetime.now() + datetime.timedelta(10)
+            datetime.datetime.now(pytz.utc) + datetime.timedelta(10)
 
         time_log2 = TimeLog(
             task=child_task2,
             resource=user1,
-            start=datetime.datetime.now() + datetime.timedelta(1),
-            end=datetime.datetime.now() + datetime.timedelta(2)
+            start=datetime.datetime.now(pytz.utc) + datetime.timedelta(1),
+            end=datetime.datetime.now(pytz.utc) + datetime.timedelta(2)
         )
 
         # time log for another task
         time_log3 = TimeLog(
             task=task2,
             resource=user1,
-            start=datetime.datetime.now() + datetime.timedelta(2),
-            end=datetime.datetime.now() + datetime.timedelta(3)
+            start=datetime.datetime.now(pytz.utc) + datetime.timedelta(2),
+            end=datetime.datetime.now(pytz.utc) + datetime.timedelta(3)
         )
 
         # Versions
@@ -4748,30 +4670,31 @@ class DatabaseModelsTester(unittest.TestCase):
 
         # time logs
         import datetime
+        import pytz
         from stalker import TimeLog
         time_log1 = TimeLog(
             task=child_task1,
             resource=user1,
-            start=datetime.datetime.now(),
-            end=datetime.datetime.now() + datetime.timedelta(1)
+            start=datetime.datetime.now(pytz.utc),
+            end=datetime.datetime.now(pytz.utc) + datetime.timedelta(1)
         )
-        task1.computed_start = datetime.datetime.now()
+        task1.computed_start = datetime.datetime.now(pytz.utc)
         task1.computed_end = \
-            datetime.datetime.now() + datetime.timedelta(10)
+            datetime.datetime.now(pytz.utc) + datetime.timedelta(10)
 
         time_log2 = TimeLog(
             task=child_task2,
             resource=user1,
-            start=datetime.datetime.now() + datetime.timedelta(1),
-            end=datetime.datetime.now() + datetime.timedelta(2)
+            start=datetime.datetime.now(pytz.utc) + datetime.timedelta(1),
+            end=datetime.datetime.now(pytz.utc) + datetime.timedelta(2)
         )
 
         # time log for another task
         time_log3 = TimeLog(
             task=task2,
             resource=user1,
-            start=datetime.datetime.now() + datetime.timedelta(2),
-            end=datetime.datetime.now() + datetime.timedelta(3)
+            start=datetime.datetime.now(pytz.utc) + datetime.timedelta(2),
+            end=datetime.datetime.now(pytz.utc) + datetime.timedelta(3)
         )
 
         from stalker import Review
@@ -5007,17 +4930,18 @@ class DatabaseModelsTester(unittest.TestCase):
         db.DBSession.commit()
 
         import datetime
+        import pytz
         from stalker import Vacation
         vacation1 = Vacation(
             user=user1,
-            start=datetime.datetime.now(),
-            end=datetime.datetime.now() + datetime.timedelta(1)
+            start=datetime.datetime.now(pytz.utc),
+            end=datetime.datetime.now(pytz.utc) + datetime.timedelta(1)
         )
 
         vacation2 = Vacation(
             user=user1,
-            start=datetime.datetime.now() + datetime.timedelta(2),
-            end=datetime.datetime.now() + datetime.timedelta(3)
+            start=datetime.datetime.now(pytz.utc) + datetime.timedelta(2),
+            end=datetime.datetime.now(pytz.utc) + datetime.timedelta(3)
         )
 
         user1.vacations.append(vacation1)
@@ -5056,8 +4980,8 @@ class DatabaseModelsTester(unittest.TestCase):
         time_log1 = TimeLog(
             task=task1,
             resource=user1,
-            start=dt.now(),
-            end=dt.now() + td(1)
+            start=dt.now(pytz.utc),
+            end=dt.now(pytz.utc) + td(1)
         )
         db.DBSession.add(time_log1)
         db.DBSession.add(task1)
@@ -5146,6 +5070,7 @@ class DatabaseModelsTester(unittest.TestCase):
         """testing the persistence of AuthenticationLog
         """
         import datetime
+        import pytz
         from stalker import User, AuthenticationLog
         from stalker import db
         user1 = User(
@@ -5161,13 +5086,13 @@ class DatabaseModelsTester(unittest.TestCase):
         al1 = AuthenticationLog(
             user=user1,
             action=LOGIN,
-            date=datetime.datetime.now()
+            date=datetime.datetime.now(pytz.utc)
         )
 
         al2 = AuthenticationLog(
             user=user1,
             action=LOGOUT,
-            date=datetime.datetime.now() + datetime.timedelta(minutes=10)
+            date=datetime.datetime.now(pytz.utc) + datetime.timedelta(minutes=10)
         )
 
         db.DBSession.add_all([al1, al2])
@@ -5231,8 +5156,9 @@ class DatabaseModelsTester(unittest.TestCase):
         )
 
         import datetime
-        start = datetime.datetime(2013, 6, 7, 15, 0)
-        end = datetime.datetime(2013, 6, 21, 0, 0)
+        import pytz
+        start = datetime.datetime(2013, 6, 7, 15, 0, tzinfo=pytz.utc)
+        end = datetime.datetime(2013, 6, 21, 0, 0, tzinfo=pytz.utc)
 
         vacation = Vacation(
             user=new_user,
@@ -5456,48 +5382,3 @@ class DatabaseModelsTester(unittest.TestCase):
             test_version_4.version_number
         )
         self.assertIsNone(test_version_4_db.parent)
-
-
-class DatabaseModelsPostgreSQLTester(DatabaseModelsTester):
-    """does the same test sof DatabaseModelsTester in PostgreSQL
-    """
-
-    @classmethod
-    def setUpClass(cls):
-        """setup the tests in class level
-        """
-        cls.config = {
-            'sqlalchemy.url':
-            'postgresql://stalker_admin:stalker@localhost/stalker_test',
-            'sqlalchemy.echo': False
-        }
-        from stalker.db.declarative import Base
-        from stalker import db, defaults
-        db.setup(cls.config)
-        Base.metadata.drop_all(db.DBSession.connection())
-        db.DBSession.commit()
-
-        # restore defaults.timing_resolution
-        import datetime
-        defaults.timing_resolution = datetime.timedelta(hours=1)
-
-    def setUp(self):
-        """setup the test to use the PostgreSQL test database
-        """
-        # we need a database
-        from stalker import db
-        db.setup(self.config)
-        db.init()
-
-    def tearDown(self):
-        """clean up the test
-        """
-        # clean up test database
-        from stalker.db.declarative import Base
-        from stalker import db, defaults
-        Base.metadata.drop_all(db.DBSession.connection())
-        db.DBSession.commit()
-
-        # restore defaults.timing_resolution
-        import datetime
-        defaults.timing_resolution = datetime.timedelta(hours=1)

@@ -22,6 +22,7 @@ import json
 import re
 import base64
 import datetime
+import pytz
 
 from sqlalchemy import (Table, Column, Integer, ForeignKey, String, DateTime,
                         Enum, Float)
@@ -195,7 +196,7 @@ class Permission(Base):
 
         if action not in defaults.actions:
             raise ValueError(
-                '%s.action should be one of the values of %s not %s' %
+                "%s.action should be one of the values of %s not '%s'" %
                 (self.__class__.__name__, defaults.actions, action)
             )
 
@@ -745,7 +746,6 @@ class User(Entity, ACLMixin):
             It will now compare the string (str) versions of the given
             raw_password and the current Users object encrypted password.
         """
-
         mangled_password_str = str(self.password)
         raw_password_bytes = base64.b64encode(
             bytes(raw_password.encode('utf-8')))
@@ -757,10 +757,7 @@ class User(Entity, ACLMixin):
             raw_password_encrypted_str = \
                 str(raw_password_bytes.decode('utf-8'))
 
-        if mangled_password_str == raw_password_encrypted_str:
-            return True
-        else:
-            return False
+        return mangled_password_str == raw_password_encrypted_str
 
     @validates("groups")
     def _validate_groups(self, key, group):
@@ -768,7 +765,7 @@ class User(Entity, ACLMixin):
         """
         if not isinstance(group, Group):
             raise TypeError(
-                "Any group in %s.groups should be an instance of"
+                "Any group in %s.groups should be an instance of "
                 "stalker.models.auth.Group not %s" %
                 (self.__class__.__name__, group.__class__.__name__)
             )
@@ -811,8 +808,8 @@ class User(Entity, ACLMixin):
 
         if not isinstance(vacation, Vacation):
             raise TypeError(
-                "All of the members of %s.vacations should be an instance of "
-                "stalker.models.studio.Vacation, not %s" %
+                "All of the elements in %s.vacations should be a "
+                "stalker.models.studio.Vacation instance, not %s" %
                 (self.__class__.__name__, vacation.__class__.__name__)
             )
         return vacation
@@ -961,7 +958,7 @@ class LocalSession(object):
         :param int millis: an int value showing the millis from unix EPOCH
         :return:
         """
-        epoch = datetime.datetime(1970, 1, 1)
+        epoch = datetime.datetime(1970, 1, 1, tzinfo=pytz.utc)
         return epoch + datetime.timedelta(milliseconds=millis)
 
     def load(self):
@@ -972,7 +969,7 @@ class LocalSession(object):
                 # try:
                 json_object = json.load(s)
                 valid_to = self.millis_to_datetime(json_object.get('valid_to'))
-                if valid_to > datetime.datetime.now():
+                if valid_to > datetime.datetime.now(pytz.utc):
                     # fill __dict__ with the loaded one
                     self.valid_to = valid_to
                     self.logged_in_user_id = \
@@ -997,7 +994,8 @@ class LocalSession(object):
     def save(self):
         """remembers the data in user local file system
         """
-        self.valid_to = datetime.datetime.now() + datetime.timedelta(days=10)
+        self.valid_to = datetime.datetime.now(pytz.utc) + \
+                        datetime.timedelta(days=10)
         # serialize self
         dumped_data = json.dumps({
             'valid_to': self.valid_to,
@@ -1143,7 +1141,7 @@ class AuthenticationLog(SimpleEntity):
     )
 
     date = Column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=False
     )
 
@@ -1190,7 +1188,7 @@ class AuthenticationLog(SimpleEntity):
         """validates the given date value
         """
         if date is None:
-            date = datetime.datetime.now()
+            date = datetime.datetime.now(pytz.utc)
 
         if not isinstance(date, datetime.datetime):
             raise TypeError(

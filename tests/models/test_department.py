@@ -16,21 +16,20 @@
 # You should have received a copy of the Lesser GNU General Public License
 # along with Stalker.  If not, see <http://www.gnu.org/licenses/>
 
-import unittest
-import datetime
-from stalker import db, Department, Entity, User
+from stalker.testing import UnitTestBase
+from stalker import Department
 
 
-class DepartmentTester(unittest.TestCase):
+class DepartmentTester(UnitTestBase):
     """tests the Department class
     """
 
     def setUp(self):
         """lets setup the tests
         """
-        db.setup()  # uses in memory sqlite db
-        db.init()
+        super(DepartmentTester, self).setUp()
 
+        from stalker import db, User
         self.test_admin = User.query.filter_by(login="admin").first()
 
         # create a couple of test users
@@ -81,7 +80,9 @@ class DepartmentTester(unittest.TestCase):
             self.test_user4
         ]
 
-        self.date_created = self.date_updated = datetime.datetime.now()
+        import datetime
+        import pytz
+        self.date_created = self.date_updated = datetime.datetime.now(pytz.utc)
 
         self.kwargs = {
             "name": "Test Department",
@@ -124,10 +125,13 @@ class DepartmentTester(unittest.TestCase):
         test_value = [1, 2.3, [], {}]
         self.kwargs["users"] = test_value
         # this should raise a TypeError
-        self.assertRaises(
-            TypeError,
-            Department,
-            **self.kwargs
+        with self.assertRaises(TypeError) as cm:
+            Department(**self.kwargs)
+
+        self.assertEqual(
+            str(cm.exception),
+            'DepartmentUser.user should be a stalker.models.auth.User '
+            'instance, not int'
         )
 
     def test_users_attribute_accepts_only_a_list_of_user_objects(self):
@@ -135,50 +139,69 @@ class DepartmentTester(unittest.TestCase):
         """
         test_value = [1, 2.3, [], {}]
         # this should raise a TypeError
-        self.assertRaises(
-            TypeError,
-            setattr,
-            self.test_department,
-            "users",
-            test_value
+        with self.assertRaises(TypeError) as cm:
+            self.test_department.users = test_value
+
+        self.assertEqual(
+            str(cm.exception),
+            'DepartmentUser.user should be a stalker.models.auth.User '
+            'instance, not int'
         )
 
-    def test_users_attribute_elements_accepts_User_only(self):
+    def test_users_attribute_elements_accepts_User_only_1(self):
         """testing if a TypeError will be raised when trying to assign
         something other than a User object to the users list
         """
         # append
-        self.assertRaises(
-            TypeError,
-            self.test_department.users.append,
-            0
+        with self.assertRaises(TypeError) as cm:
+            self.test_department.users.append(0)
+
+        self.assertEqual(
+            str(cm.exception),
+            'DepartmentUser.user should be a stalker.models.auth.User '
+            'instance, not int'
         )
 
+    def test_users_attribute_elements_accepts_User_only_2(self):
+        """testing if a TypeError will be raised when trying to assign
+        something other than a User object to the users list
+        """
         # __setitem__
-        self.assertRaises(
-            TypeError,
-            self.test_department.users.__setitem__,
-            0,
-            0
+        with self.assertRaises(TypeError) as cm:
+            self.test_department.users[0] = 0
+
+        self.assertEqual(
+            str(cm.exception),
+            'DepartmentUser.user should be a stalker.models.auth.User '
+            'instance, not int'
         )
 
     def test_users_argument_is_not_iterable(self):
         """testing if a TypeError will be raised when the given users
         argument is not an instance of list
         """
-        test_values = [1, 1.2, "a user"]
-        for test_value in test_values:
-            self.kwargs["users"] = test_value
-            self.assertRaises(TypeError, Department, **self.kwargs)
+        self.kwargs["users"] = "a user"
+        with self.assertRaises(TypeError) as cm:
+            Department(**self.kwargs)
+
+        self.assertEqual(
+            str(cm.exception),
+            'DepartmentUser.user should be a stalker.models.auth.User '
+            'instance, not str'
+        )
 
     def test_users_attribute_is_not_iterable(self):
         """testing if a TypeError will be raised when the users attribute
         is tried to be set to a non-iterable value
         """
-        test_values = [1, 1.2, "a user"]
-        for test_value in test_values:
-            self.assertRaises(TypeError, setattr, self.test_department,
-                              "users", test_value)
+        with self.assertRaises(TypeError) as cm:
+            self.test_department.users = "a user"
+
+        self.assertEqual(
+            str(cm.exception),
+            'DepartmentUser.user should be a stalker.models.auth.User '
+            'instance, not str'
+        )
 
     def test_users_attribute_defaults_to_empty_list(self):
         """testing if the users attribute defaults to an empty list if the
@@ -192,15 +215,20 @@ class DepartmentTester(unittest.TestCase):
         """testing if a TypeError will be raised when the users attribute is
         set to None
         """
-        self.assertRaises(TypeError, setattr, self.test_department, "users",
-                          None)
+        with self.assertRaises(TypeError) as cm:
+            self.test_department.users = None
+
+        self.assertEqual(
+            str(cm.exception),
+            "'NoneType' object is not iterable"
+        )
 
     def test_user_role_attribute(self):
         """testing the automatic generation of the DepartmentUser class
         """
         # assign a user to a department and search for a DepartmentUser
         # representing that relation
-        from stalker import DepartmentUser
+        from stalker import db, DepartmentUser
         db.DBSession.commit()
         with db.DBSession.no_autoflush:
             self.test_department.users.append(self.test_user5)
@@ -220,6 +248,7 @@ class DepartmentTester(unittest.TestCase):
     def test_equality(self):
         """testing equality of two Department objects
         """
+        from stalker import Entity
         dep1 = Department(**self.kwargs)
         dep2 = Department(**self.kwargs)
 
@@ -237,6 +266,7 @@ class DepartmentTester(unittest.TestCase):
     def test_inequality(self):
         """testing inequality of two Department objects
         """
+        from stalker import Entity
         dep1 = Department(**self.kwargs)
         dep2 = Department(**self.kwargs)
 

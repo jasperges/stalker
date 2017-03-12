@@ -211,11 +211,17 @@ class Repository(Entity):
         :return:
         """
         if path is None:
-            raise TypeError('path can not be None')
+            raise TypeError(
+                '%s.path can not be None' % self.__class__.__name__
+            )
 
         from stalker import __string_types__
         if not isinstance(path, __string_types__):
-            raise TypeError('path should be a string')
+            raise TypeError(
+                '%s.path should be a string, not %s' % (
+                    self.__class__.__name__, path.__class__.__name__
+                )
+            )
 
         # expand all variables
         path = os.path.normpath(
@@ -339,6 +345,3 @@ def receive_after_insert(mapper, connection, repo):
     """
     logger.debug('auto creating env var for Repository with id: %s' % repo.id)
     os.environ[defaults.repo_env_var_template % {'id': repo.id}] = repo.path
-
-
-#@event.listens_for

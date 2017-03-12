@@ -16,17 +16,19 @@
 # You should have received a copy of the Lesser GNU General Public License
 # along with Stalker.  If not, see <http://www.gnu.org/licenses/>
 
-import unittest
 from stalker import ProjectClient
+from stalker.testing import UnitTestBase
 
 
-class ProjectClientTestCase(unittest.TestCase):
+class ProjectClientTestCase(UnitTestBase):
     """tests for ProjectClient class
     """
 
     def setUp(self):
         """set the test up
         """
+        super(ProjectClientTestCase, self).setUp()
+
         from stalker import Status, StatusList, Repository
         self.test_repo = Repository(
             name='Test Repo'

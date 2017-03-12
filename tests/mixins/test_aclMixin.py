@@ -16,15 +16,12 @@
 # You should have received a copy of the Lesser GNU General Public License
 # along with Stalker.  If not, see <http://www.gnu.org/licenses/>
 
-import unittest
 
 from sqlalchemy import Column, Integer
 
-from stalker import db
-from stalker.db.session import DBSession
-from stalker.models.mixins import ACLMixin
+from stalker import ACLMixin
+from stalker.testing import UnitTestBase
 from stalker.db.declarative import Base
-from stalker.models.auth import Permission
 
 
 # create a new class and mix it with ACLMixin
@@ -36,30 +33,17 @@ class TestClassForACL(Base, ACLMixin):
         self.name = None
 
 
-class ACLMixinTester(unittest.TestCase):
+class ACLMixinTester(UnitTestBase):
     """tests the stalker.models.mixins.ACLMixin class
     """
-
-    @classmethod
-    def setUpClass(cls):
-        """setup the test in class level
-        """
-        DBSession.remove()
-        DBSession.configure()
-
-    @classmethod
-    def tearDownClass(cls):
-        """cleanup the test in class level
-        """
-        DBSession.remove()
-        DBSession.configure()
 
     def setUp(self):
         """setup the test
         """
-        db.setup()
+        super(ACLMixinTester, self).setUp()
 
         # create permissions
+        from stalker import Permission
         self.test_perm1 = Permission(
             access='Allow',
             action='Create',
@@ -69,16 +53,18 @@ class ACLMixinTester(unittest.TestCase):
         self.test_instance.name = 'Test'
         self.test_instance.permissions.append(self.test_perm1)
 
-    def tearDown(self):
-        """clean the test
-        """
-        DBSession.remove()
-
     def test_permission_attribute_accept_Permission_instances_only(self):
         """testing if the permissions attribute accepts only Permission
         instances
         """
-        self.assertRaises(TypeError, setattr, self.test_instance, [234])
+        with self.assertRaises(TypeError) as cm:
+            self.test_instance.permissions = [234]
+
+        self.assertEqual(
+            str(cm.exception),
+            'TestClassForACL.permissions should be all instances of '
+            'stalker.models.auth.Permission not int'
+        )
 
     def test_permission_attribute_is_working_properly(self):
         """testing if the permissions attribute is working properly

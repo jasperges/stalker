@@ -42,7 +42,8 @@ class Config(object):
         # for possible parameters
         #
         database_engine_settings={
-            "sqlalchemy.url": "sqlite:///:memory:",
+            "sqlalchemy.url":
+                "postgres://stalker_admin:stalker@localhost/stalker",
             "sqlalchemy.echo": False,
         },
 
@@ -537,7 +538,8 @@ taskreport breakdown "{{csv_file_name}}"{
         return setattr(self, name, value)
 
     def __delitem__(self, name):
-        delattr(self, name)
+        # delattr(self, name)
+        self.config_values.pop(name)
 
     def __contains__(self, name):
         return name in self.config_values

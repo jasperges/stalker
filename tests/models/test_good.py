@@ -16,17 +16,18 @@
 # You should have received a copy of the Lesser GNU General Public License
 # along with Stalker.  If not, see <http://www.gnu.org/licenses/>
 
-import unittest
 from stalker.models.budget import Good
+from stalker.testing import UnitTestBase
 
 
-class GoodTestCase(unittest.TestCase):
+class GoodTestCase(UnitTestBase):
     """tests the stalker.models.budget.Good class
     """
 
     def setUp(self):
         """set up the test
         """
+        super(GoodTestCase, self).setUp()
         self.kwargs = {
             'name': 'Comp',
             'cost': 10,

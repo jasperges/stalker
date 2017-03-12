@@ -34,19 +34,6 @@ class LoginError(Exception):
         return repr(self.value)
 
 
-class DBError(Exception):
-    """Raised when there is no database and a database related action has been
-    placed.
-    """
-
-    def __init__(self, value=""):
-        super(DBError, self).__init__(value)
-        self.value = value
-
-    def __str__(self):
-        return repr(self.value)
-
-
 class CircularDependencyError(Exception):
     """Raised when there is circular dependencies within Tasks
     """
@@ -55,7 +42,7 @@ class CircularDependencyError(Exception):
         self.value = value
 
     def __str__(self):
-        return repr(self.value)
+        return self.value
 
 
 class OverBookedError(Exception):
@@ -67,7 +54,7 @@ class OverBookedError(Exception):
         self.value = value
 
     def __str__(self):
-        return repr(self.value)
+        return self.value
 
 
 class StatusError(Exception):
@@ -80,7 +67,7 @@ class StatusError(Exception):
         self.value = value
 
     def __str__(self):
-        return repr(self.value)
+        return self.value
 
 
 class DependencyViolationError(Exception):

@@ -16,20 +16,13 @@
 # You should have received a copy of the Lesser GNU General Public License
 # along with Stalker.  If not, see <http://www.gnu.org/licenses/>
 
-import unittest
-
+from stalker.testing import UnitTestBase
 from stalker import Role
 
 
-class RoleTestCase(unittest.TestCase):
+class RoleTestCase(UnitTestBase):
     """testing the Role class
     """
-
-    def setUp(self):
-        """set the test up
-        """
-        # the role class does not have anything to test
-        pass
 
     def test_role_class_generic(self):
         """testing of creation of a Role instance

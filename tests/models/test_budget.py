@@ -16,29 +16,21 @@
 # You should have received a copy of the Lesser GNU General Public License
 # along with Stalker.  If not, see <http://www.gnu.org/licenses/>
 
-import tempfile
-import unittest
-import datetime
-from stalker import (db, defaults, Project, Status, StatusList, Type,
-                     Repository, User, Budget, BudgetEntry, Good)
+
+from stalker.testing import UnitTestBase
+from stalker import Budget, BudgetEntry, Good
 
 
-class BudgetTestBase(unittest.TestCase):
+class BudgetTestBase(UnitTestBase):
     """the base for this test
     """
 
     def setUp(self):
         """run once
         """
-        defaults.timing_resolution = datetime.timedelta(hours=1)
+        super(BudgetTestBase, self).setUp()
 
-        # create a new session
-        db.setup({
-            'sqlalchemy.url': 'sqlite://',
-            'sqlalchemy.echo': False
-        })
-        db.init()
-
+        from stalker import db, Status
         self.status_wfd = Status.query.filter_by(code="WFD").first()
         self.status_rts = Status.query.filter_by(code="RTS").first()
         self.status_wip = Status.query.filter_by(code="WIP").first()
@@ -52,6 +44,7 @@ class BudgetTestBase(unittest.TestCase):
         self.status_new = Status.query.filter_by(code='NEW').first()
         self.status_app = Status.query.filter_by(code='APP').first()
 
+        from stalker import StatusList
         self.budget_status_list = StatusList(
             name='Budget Statuses',
             target_entity_type='Budget',
@@ -67,35 +60,43 @@ class BudgetTestBase(unittest.TestCase):
             statuses=[self.status_wip,
                       self.status_prev,
                       self.status_cmpl],
-            target_entity_type=Project,
+            target_entity_type='Project',
         )
+        db.DBSession.add(self.test_project_status_list)
 
+        from stalker import Type
         self.test_movie_project_type = Type(
             name="Movie Project",
             code='movie',
-            target_entity_type=Project,
+            target_entity_type='Project',
         )
+        db.DBSession.add(self.test_movie_project_type)
 
         self.test_repository_type = Type(
             name="Test Repository Type",
             code='test',
-            target_entity_type=Repository,
+            target_entity_type='Repository',
         )
+        db.DBSession.add(self.test_repository_type)
 
+        from stalker import Repository
         self.test_repository = Repository(
             name="Test Repository",
             type=self.test_repository_type,
-            linux_path=tempfile.mkdtemp(),
-            windows_path=tempfile.mkdtemp(),
-            osx_path=tempfile.mkdtemp()
+            linux_path='/mnt/T/',
+            windows_path='T:/',
+            osx_path='/Volumes/T/'
         )
+        db.DBSession.add(self.test_repository)
 
+        from stalker import User
         self.test_user1 = User(
             name="User1",
             login="user1",
             email="user1@user1.com",
             password="1234"
         )
+        db.DBSession.add(self.test_user1)
 
         self.test_user2 = User(
             name="User2",
@@ -103,6 +104,7 @@ class BudgetTestBase(unittest.TestCase):
             email="user2@user2.com",
             password="1234"
         )
+        db.DBSession.add(self.test_user2)
 
         self.test_user3 = User(
             name="User3",
@@ -110,6 +112,7 @@ class BudgetTestBase(unittest.TestCase):
             email="user3@user3.com",
             password="1234"
         )
+        db.DBSession.add(self.test_user3)
 
         self.test_user4 = User(
             name="User4",
@@ -117,6 +120,7 @@ class BudgetTestBase(unittest.TestCase):
             email="user4@user4.com",
             password="1234"
         )
+        db.DBSession.add(self.test_user4)
 
         self.test_user5 = User(
             name="User5",
@@ -124,7 +128,9 @@ class BudgetTestBase(unittest.TestCase):
             email="user5@user5.com",
             password="1234"
         )
+        db.DBSession.add(self.test_user5)
 
+        from stalker import Project
         self.test_project = Project(
             name="Test Project1",
             code='tp1',
@@ -132,6 +138,7 @@ class BudgetTestBase(unittest.TestCase):
             status_list=self.test_project_status_list,
             repository=self.test_repository
         )
+        db.DBSession.add(self.test_project)
 
         self.kwargs = {
             'project': self.test_project,
@@ -139,13 +146,17 @@ class BudgetTestBase(unittest.TestCase):
         }
 
         self.test_budget = Budget(**self.kwargs)
+        db.DBSession.add(self.test_budget)
 
+        from stalker import Good
         self.test_good = Good(
             name='Some Good',
             cost=100,
             msrp=120,
             unit='$'
         )
+        db.DBSession.add(self.test_good)
+        db.DBSession.commit()
 
 
 class BudgetTestCase(BudgetTestBase):

@@ -16,28 +16,27 @@
 # You should have received a copy of the Lesser GNU General Public License
 # along with Stalker.  If not, see <http://www.gnu.org/licenses/>
 
-import unittest
-from stalker import (db, Asset, Entity, Project, Repository, Sequence, Status,
-                     StatusList, Task, Type, Link, Shot, User)
+from stalker.testing import UnitTestBase
 
 
-class AssetTester(unittest.TestCase):
+class AssetTester(UnitTestBase):
     """tests Asset class
     """
 
     def setUp(self):
         """setup the test
         """
-        db.setup()
-        db.init()
+        super(AssetTester, self).setUp()
 
         # users
+        from stalker import db, User
         self.test_user1 = User(
             name='User1',
             login='user1',
             password='12345',
             email='user1@user1.com'
         )
+        db.DBSession.add(self.test_user1)
 
         self.test_user2 = User(
             name='User2',
@@ -45,8 +44,11 @@ class AssetTester(unittest.TestCase):
             password='12345',
             email='user2@user2.com'
         )
+        db.DBSession.add(self.test_user2)
+        db.DBSession.commit()
 
         # statuses
+        from stalker import Status, StatusList, Project
         self.status_wip = Status.query.filter_by(code='WIP').first()
         self.status_cmpl = Status.query.filter_by(code='CMPL').first()
 
@@ -59,6 +61,8 @@ class AssetTester(unittest.TestCase):
                 self.status_wip
             ]
         )
+        db.DBSession.add(self.project_status_list)
+        db.DBSession.commit()
 
         self.task_status_list = \
             StatusList.query.filter_by(target_entity_type='Task').first()
@@ -73,35 +77,42 @@ class AssetTester(unittest.TestCase):
             StatusList.query.filter_by(target_entity_type='Sequence').first()
 
         # types
+        from stalker import Type
         self.commercial_project_type = Type(
             name="Commercial Project",
             code='commproj',
             target_entity_type=Project,
         )
+        db.DBSession.add(self.commercial_project_type)
 
         self.asset_type1 = Type(
             name="Character",
             code='char',
-            target_entity_type=Asset
+            target_entity_type='Asset'
         )
+        db.DBSession.add(self.asset_type1)
 
         self.asset_type2 = Type(
             name="Environment",
             code='env',
-            target_entity_type=Asset
+            target_entity_type='Asset'
         )
+        db.DBSession.add(self.asset_type2)
 
         self.repository_type = Type(
             name="Test Repository Type",
             code='testrepo',
-            target_entity_type=Repository,
+            target_entity_type='Repository',
         )
+        db.DBSession.add(self.repository_type)
 
         # repository
+        from stalker import Repository
         self.repository = Repository(
             name="Test Repository",
             type=self.repository_type,
         )
+        db.DBSession.add(self.repository)
 
         # project
         self.project1 = Project(
@@ -111,8 +122,10 @@ class AssetTester(unittest.TestCase):
             status_list=self.project_status_list,
             repositories=[self.repository],
         )
+        db.DBSession.add(self.project1)
 
         # sequence
+        from stalker import Sequence
         self.seq1 = Sequence(
             name="Test Sequence",
             code='tseq',
@@ -120,8 +133,10 @@ class AssetTester(unittest.TestCase):
             status_list=self.sequence_status_list,
             responsible=[self.test_user1]
         )
+        db.DBSession.add(self.seq1)
 
         # shots
+        from stalker import Shot
         self.shot1 = Shot(
             code="TestSH001",
             status_list=self.shot_status_list,
@@ -129,6 +144,7 @@ class AssetTester(unittest.TestCase):
             sequences=[self.seq1],
             responsible=[self.test_user1]
         )
+        db.DBSession.add(self.shot1)
 
         self.shot2 = Shot(
             code="TestSH002",
@@ -137,6 +153,7 @@ class AssetTester(unittest.TestCase):
             sequences=[self.seq1],
             responsible=[self.test_user1]
         )
+        db.DBSession.add(self.shot2)
 
         self.shot3 = Shot(
             code="TestSH003",
@@ -145,6 +162,7 @@ class AssetTester(unittest.TestCase):
             sequences=[self.seq1],
             responsible=[self.test_user1]
         )
+        db.DBSession.add(self.shot3)
 
         self.shot4 = Shot(
             code="TestSH004",
@@ -153,6 +171,7 @@ class AssetTester(unittest.TestCase):
             sequences=[self.seq1],
             responsible=[self.test_user1]
         )
+        db.DBSession.add(self.shot4)
 
         self.kwargs = {
             "name": "Test Asset",
@@ -165,7 +184,9 @@ class AssetTester(unittest.TestCase):
             'responsible': [self.test_user1]
         }
 
+        from stalker import Asset, Task
         self.asset1 = Asset(**self.kwargs)
+        db.DBSession.add(self.asset1)
 
         # tasks
         self.task1 = Task(
@@ -173,29 +194,34 @@ class AssetTester(unittest.TestCase):
             parent=self.asset1,
             status_list=self.task_status_list
         )
+        db.DBSession.add(self.task1)
 
         self.task2 = Task(
             name="Task2",
             parent=self.asset1,
             status_list=self.task_status_list
         )
+        db.DBSession.add(self.task2)
 
         self.task3 = Task(
             name="Task3",
             parent=self.asset1,
             status_list=self.task_status_list
         )
+        db.DBSession.add(self.task3)
+        db.DBSession.commit()
 
     def test___auto_name__class_attribute_is_set_to_False(self):
         """testing if the __auto_name__ class attribute is set to False for
         Asset class
         """
+        from stalker import Asset
         self.assertFalse(Asset.__auto_name__)
 
     def test_equality(self):
         """testing equality of two Asset objects
         """
-
+        from stalker import Asset, Entity
         new_asset1 = Asset(**self.kwargs)
         new_asset2 = Asset(**self.kwargs)
 
@@ -216,7 +242,7 @@ class AssetTester(unittest.TestCase):
     def test_inequality(self):
         """testing inequality of two Asset objects
         """
-
+        from stalker import Asset, Entity
         new_asset1 = Asset(**self.kwargs)
         new_asset2 = Asset(**self.kwargs)
 
@@ -238,6 +264,7 @@ class AssetTester(unittest.TestCase):
         """testing if the ReferenceMixin part is initialized correctly
         """
 
+        from stalker import Link, Type
         link_type_1 = Type(
             name="Image",
             code='image',
@@ -263,6 +290,7 @@ class AssetTester(unittest.TestCase):
         self.kwargs["code"] = "SH12314"
         self.kwargs["references"] = references
 
+        from stalker import Asset
         new_asset = Asset(**self.kwargs)
 
         self.assertEqual(new_asset.references, references)
@@ -270,6 +298,7 @@ class AssetTester(unittest.TestCase):
     def test_StatusMixin_initialization(self):
         """testing if the StatusMixin part is initialized correctly
         """
+        from stalker import StatusList, Asset
         status_list = \
             StatusList.query.filter_by(target_entity_type='Asset').first()
 
@@ -284,11 +313,11 @@ class AssetTester(unittest.TestCase):
     def test_TaskMixin_initialization(self):
         """testing if the TaskMixin part is initialized correctly
         """
-
+        from stalker import Type, Project, Asset, Task
         commercial_project_type = Type(
             name="Commercial",
             code='comm',
-            target_entity_type=Project,
+            target_entity_type='Project',
         )
 
         new_project = Project(
@@ -302,7 +331,7 @@ class AssetTester(unittest.TestCase):
         character_asset_type = Type(
             name="Character",
             code='char',
-            target_entity_type=Asset
+            target_entity_type='Asset'
         )
 
         new_asset = Asset(
@@ -338,5 +367,5 @@ class AssetTester(unittest.TestCase):
     def test___strictly_typed___is_True(self):
         """testing if the __strictly_typed__ class attribute is True
         """
-
+        from stalker import Asset
         self.assertEqual(Asset.__strictly_typed__, True)

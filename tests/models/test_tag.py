@@ -16,17 +16,18 @@
 # You should have received a copy of the Lesser GNU General Public License
 # along with Stalker.  If not, see <http://www.gnu.org/licenses/>
 
-import unittest
 from stalker import Tag, SimpleEntity
+from stalker.testing import UnitTestBase
 
 
-class TagTest(unittest.TestCase):
+class TagTest(UnitTestBase):
     """testing the Tag class
     """
 
     def setUp(self):
         """setup the test
         """
+        super(UnitTestBase, self).setUp()
         self.kwargs = {
             "name": "a test tag",
             "description": "this is a test tag",

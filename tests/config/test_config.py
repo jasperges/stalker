@@ -16,45 +16,32 @@
 # You should have received a copy of the Lesser GNU General Public License
 # along with Stalker.  If not, see <http://www.gnu.org/licenses/>
 
-import os
-import shutil
-import tempfile
-import datetime
-import unittest
-import logging
-import stalker
+from stalker.testing import UnitTestBase
 
+import logging
 logger = logging.getLogger("stalker")
 logger.setLevel(logging.DEBUG)
 
 
-class ConfigTester(unittest.TestCase):
+class ConfigTester(UnitTestBase):
     """test the system configuration
     """
 
     def setUp(self):
         """setup the test
         """
+        super(ConfigTester, self).setUp()
+        import tempfile
         # so we need a temp directory to be specified as our config folder
         self.temp_config_folder = tempfile.mkdtemp()
 
         # we should set the environment variable
+        import os
         os.environ["STALKER_PATH"] = self.temp_config_folder
 
         self.config_full_path = os.path.join(
             self.temp_config_folder, "config.py"
         )
-
-    def tearDown(self):
-        """clean up the test
-        """
-        from stalker.db import DBSession
-        DBSession.remove()
-
-        # and remove the temp directory
-        shutil.rmtree(self.temp_config_folder)
-        # restore defaults.timing_resolution
-        stalker.defaults.timing_resolution = datetime.timedelta(hours=1)
 
     def test_config_variable_updates_with_user_config(self):
         """testing if the database_file_name will be updated by the user
@@ -94,13 +81,13 @@ class ConfigTester(unittest.TestCase):
         from stalker import config
         conf = config.Config()
 
-        #self.assertRaises(KeyError, getattr, conf, "test_value")
         self.assertEqual(conf.test_value, test_value)
 
     def test_env_variable_with_vars_module_import_with_shortcuts(self):
         """testing if the module path has shortcuts like ~ and other env
         variables
         """
+        import os
         splits = os.path.split(self.temp_config_folder)
         var1 = splits[0]
         var2 = os.path.sep.join(splits[1:])
@@ -126,6 +113,7 @@ class ConfigTester(unittest.TestCase):
         """testing if the module path has multiple shortcuts like ~ and other
         env variables
         """
+        import os
         splits = os.path.split(self.temp_config_folder)
         var1 = splits[0]
         var2 = os.path.sep.join(splits[1:])
@@ -153,8 +141,9 @@ class ConfigTester(unittest.TestCase):
         """testing if the non existing path situation will be handled
         gracefully by warning the user
         """
-        os.environ["STALKER_PATH"] = "/tmp/non_existing_path"
+        import os
         from stalker import config
+        os.environ["STALKER_PATH"] = "/tmp/non_existing_path"
         config.Config()
 
     def test_syntax_error_in_settings_file(self):
@@ -173,19 +162,26 @@ class ConfigTester(unittest.TestCase):
         # now import the config.py and see if it updates the
         # database_file_name variable
         from stalker import config
-        self.assertRaises(RuntimeError, config.Config)
+        with self.assertRaises(RuntimeError) as cm:
+            config.Config()
+
+        self.assertEqual(
+            str(cm.exception),
+            'There is a syntax error in your configuration file: EOL while '
+            'scanning string literal (<string>, line 2)'
+        )
 
     def test_update_with_studio_is_working_properly(self):
         """testing if the default values are updated with the Studio instance
         if there is a database connection and there is a Studio in there
         """
         import datetime
-        from stalker import db, defaults
+        from stalker import defaults
         from stalker.db.session import DBSession
         from stalker.models.studio import Studio
 
-        db.setup()
-        db.init()
+        # db.setup()
+        # db.init()
 
         # check the defaults are still using them self
         self.assertEqual(
@@ -205,3 +201,43 @@ class ConfigTester(unittest.TestCase):
             defaults.timing_resolution,
             studio.timing_resolution
         )
+
+    def test___getattr___is_working_properly(self):
+        """testing if config.Config.__getattr__() method is working properly
+        """
+        from stalker import config
+        c = config.Config()
+        self.assertEqual(c.admin_name, 'admin')
+
+    def test___getitem___is_working_properly(self):
+        """testing if config.Config.__getitem__() method is working properly
+        """
+        from stalker import config
+        c = config.Config()
+        self.assertEqual(c['admin_name'], 'admin')
+
+    def test___setitem__is_working_properly(self):
+        """testing if config.Config.__setitem__() method is working properly
+        """
+        from stalker import config
+        c = config.Config()
+        test_value = 'administrator'
+        self.assertNotEqual(c['admin_name'], test_value)
+        c['admin_name'] = test_value
+        self.assertEqual(c['admin_name'], test_value)
+
+    def test___delitem__is_working_properly(self):
+        """testing if config.Config.__delitem__() method is working properly
+        """
+        from stalker import config
+        c = config.Config()
+        self.assertIsNotNone(c['admin_name'])
+        del c['admin_name']
+        self.assertTrue('admin_name' not in c)
+
+    def test___contains___is_working_properly(self):
+        """testing if config.Config.__contains__() method is working properly
+        """
+        from stalker import config
+        c = config.Config()
+        self.assertTrue('admin_name' in c)

@@ -16,12 +16,10 @@
 # You should have received a copy of the Lesser GNU General Public License
 # along with Stalker.  If not, see <http://www.gnu.org/licenses/>
 
-import unittest
 
 from sqlalchemy import Column, Integer, ForeignKey
-from stalker.db.session import DBSession
-from stalker.models.mixins import StatusMixin
-from stalker.models.status import StatusList, Status
+from stalker import StatusMixin, StatusList, Status
+from stalker.testing import UnitTestBase
 
 # create a new mixed in SimpleEntity
 from stalker.models.entity import SimpleEntity
@@ -49,13 +47,15 @@ class DeclStatMixB(SimpleEntity, StatusMixin):
         StatusMixin.__init__(self, **kwargs)
 
 
-class StatusMixinTester(unittest.TestCase):
+class StatusMixinTester(UnitTestBase):
     """tests StatusMixin
     """
 
     def setUp(self):
         """setup the test
         """
+        super(StatusMixinTester, self).setUp()
+
         self.test_stat1 = Status(name="On Hold", code="OH")
         self.test_stat2 = Status(name="Work In Progress", code="WIP")
         self.test_stat3 = Status(name="Approved", code="APP")
@@ -77,24 +77,35 @@ class StatusMixinTester(unittest.TestCase):
             "status_list": self.test_a_statusList
         }
 
-    def tearDown(self):
-        """clean up the test
-        """
-        DBSession.remove()
-
     def test_status_list_argument_not_set(self):
         """testing if a TypeError will be raised when the status_list argument
         is not set
         """
         self.kwargs.pop("status_list")
-        self.assertRaises(TypeError, DeclStatMixA, **self.kwargs)
+        with self.assertRaises(TypeError) as cm:
+            DeclStatMixA(**self.kwargs)
+
+        self.assertEqual(
+            str(cm.exception),
+            "DeclStatMixA instances can not be initialized without a "
+            "stalker.models.status.StatusList instance, please pass a "
+            "suitable StatusList (StatusList.target_entity_type=DeclStatMixA) "
+            "with the 'status_list' argument"
+        )
 
     def test_status_list_argument_is_not_correct(self):
         """testing if a TypeError will be raised when the given StatusList
         instance with the status_list argument is not suitable for this class
         """
         self.kwargs["status_list"] = self.test_b_statusList
-        self.assertRaises(TypeError, DeclStatMixA, **self.kwargs)
+        with self.assertRaises(TypeError) as cm:
+            DeclStatMixA(**self.kwargs)
+
+        self.assertEqual(
+            str(cm.exception),
+            "The given StatusLists' target_entity_type is DeclStatMixB, "
+            "whereas the entity_type of this object is DeclStatMixA"
+        )
 
     def test_status_list_working_properly(self):
         """testing if the status_list attribute is working properly

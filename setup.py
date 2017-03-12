@@ -9,9 +9,10 @@ README = open(os.path.join(here, 'README')).read()
 CHANGES = open(os.path.join(here, 'CHANGELOG')).read()
 
 requires = [
-    'sqlalchemy>=0.8',
+    'sqlalchemy',
     'alembic',
     'jinja2',
+    'pytz'
 ]
 
 setup(

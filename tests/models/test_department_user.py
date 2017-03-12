@@ -16,11 +16,11 @@
 # You should have received a copy of the Lesser GNU General Public License
 # along with Stalker.  If not, see <http://www.gnu.org/licenses/>
 
-import unittest
+from stalker.testing import UnitTestBase
 from stalker import DepartmentUser
 
 
-class DepartmentUserTestCase(unittest.TestCase):
+class DepartmentUserTestCase(UnitTestBase):
     """tests for DepartmentUser class
     """
 

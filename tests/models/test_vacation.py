@@ -16,46 +16,52 @@
 # You should have received a copy of the Lesser GNU General Public License
 # along with Stalker.  If not, see <http://www.gnu.org/licenses/>
 
-import datetime
-import unittest
-
-from stalker import User, Type
 from stalker.models.studio import Vacation
+from stalker.testing import UnitTestBase
 
 
-class VacationTestCase(unittest.TestCase):
+class VacationTestCase(UnitTestBase):
     """tests the stalker.models.studio.Vacation class
     """
 
     def setUp(self):
         """setup the test
         """
+        super(VacationTestCase, self).setUp()
+
         # create a user
+        from stalker import db, User
         self.test_user = User(
             name='Test User',
             login='testuser',
             email='testuser@test.com',
             password='secret',
         )
+        db.DBSession.add(self.test_user)
 
         # vacation type
+        from stalker import Type
         self.personal_vacation = Type(
             name='Personal',
             code='PERS',
             target_entity_type='Vacation'
         )
+        db.DBSession.add(self.personal_vacation)
 
         self.studio_vacation = Type(
             name='Studio Wide',
             code='STD',
             target_entity_type='Vacation'
         )
+        db.DBSession.add(self.studio_vacation)
 
+        import datetime
+        import pytz
         self.kwargs = {
             'user': self.test_user,
             'type': self.personal_vacation,
-            'start': datetime.datetime(2013, 6, 6, 10, 0),
-            'end': datetime.datetime(2013, 6, 10, 19, 0)
+            'start': datetime.datetime(2013, 6, 6, 10, 0, tzinfo=pytz.utc),
+            'end': datetime.datetime(2013, 6, 10, 19, 0, tzinfo=pytz.utc)
         }
 
         self.test_vacation = Vacation(**self.kwargs)
@@ -88,14 +94,27 @@ class VacationTestCase(unittest.TestCase):
         a stalker.models.auth.User instance
         """
         self.kwargs['user'] = 'not a user instance'
-        self.assertRaises(TypeError, Vacation, **self.kwargs)
+        with self.assertRaises(TypeError) as cm:
+            Vacation(**self.kwargs)
+
+        self.assertEqual(
+            str(cm.exception),
+            'Vacation.user should be an instance of stalker.models.auth.User, '
+            'not str'
+        )
 
     def test_user_attribute_is_not_a_User_instance(self):
         """testing if a TypeError will be raised when the user attribute is set
         to a value which is not a stalker.models.auth.User instance
         """
-        self.assertRaises(TypeError, setattr, self.test_vacation, 'user',
-                          'not a user instance')
+        with self.assertRaises(TypeError) as cm:
+            self.test_vacation.user = 'not a user instance'
+
+        self.assertEqual(
+            str(cm.exception),
+            'Vacation.user should be an instance of stalker.models.auth.User, '
+            'not str'
+        )
 
     def test_user_argument_is_working_properly(self):
         """testing if the user argument value is correctly passed to the user
@@ -106,6 +125,7 @@ class VacationTestCase(unittest.TestCase):
     def test_user_attribute_is_working_properly(self):
         """testing if the user attribute is working properly
         """
+        from stalker import User
         new_user = User(
             name='test user 2',
             login='testuser2',
@@ -129,6 +149,7 @@ class VacationTestCase(unittest.TestCase):
         """testing if the user attribute back populates vacations attribute of
         the User instance
         """
+        from stalker import User
         new_user = User(
             name='test user 2',
             login='testuser2',
@@ -142,8 +163,13 @@ class VacationTestCase(unittest.TestCase):
     def test_to_tjp_attribute_is_a_read_only_property(self):
         """testing if the to_tjp is a read-only attribute
         """
-        self.assertRaises(AttributeError, setattr, self.test_vacation,
-                          'to_tjp', 'some value')
+        with self.assertRaises(AttributeError) as cm:
+            self.test_vacation.to_tjp = 'some value'
+
+        self.assertEqual(
+            str(cm.exception),
+            "can't set attribute"
+        )
 
     def test_to_tjp_attribute_is_working_properly(self):
         """testing if the to_tjp attribute is working properly
