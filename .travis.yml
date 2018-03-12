@@ -31,5 +31,5 @@
     script:
       - py.test -n auto --cov-report= --cov=stalker tests
 
-    after_sucess:
+    after_success:
       - codeclimate-test-reporter
